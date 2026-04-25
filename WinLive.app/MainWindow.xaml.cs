@@ -1,24 +1,33 @@
-﻿using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
+﻿using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using WinLive.Presentation;
 
-namespace WinLive.app
+namespace WinLive.app;
+
+public partial class MainWindow : Window
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
-    public partial class MainWindow : Window
+    public MainWindow()
     {
-        public MainWindow()
+        InitializeComponent();
+    }
+
+    private void Island_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
         {
-            InitializeComponent();
+            return;
+        }
+
+        DragMove();
+
+        if (DataContext is WinLiveShellViewModel vm)
+        {
+            vm.IslandBounds = vm.IslandBounds.WithPosition(Left, Top);
+
+            if (vm.UpdateSettingsCommand.CanExecute(null))
+            {
+                vm.UpdateSettingsCommand.Execute(null);
+            }
         }
     }
 }

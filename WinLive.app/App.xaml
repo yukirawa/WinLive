@@ -3,6 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:WinLive.app">
     <Application.Resources>
-         
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </Application.Resources>
 </Application>
