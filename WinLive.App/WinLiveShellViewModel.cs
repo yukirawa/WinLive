@@ -66,8 +66,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         Activities = new ObservableCollection<LiveActivityViewModel>();
         SecondaryActivities = new ObservableCollection<LiveActivityViewModel>();
-        ToggleExpandCommand = new RelayCommand(() => IsExpanded = !IsExpanded, () => PrimaryActivity is not null);
+        ToggleExpandCommand = new RelayCommand(() => IsExpanded = !IsExpanded, () => ShowExpandControl);
         SelectActivityCommand = new RelayCommand(SelectActivity, CanSelectActivity);
+        PlayPauseActivityCommand = new AsyncRelayCommand(
+            (parameter, token) => ExecuteActivityActionAsync(parameter, LiveActivityActionKind.PlayPause, token),
+            parameter => CanExecuteActivityAction(parameter, LiveActivityActionKind.PlayPause));
         PlayPauseCommand = new AsyncRelayCommand(
             (_, token) => ExecutePrimaryActionAsync(LiveActivityActionKind.PlayPause, token),
             _ => CanExecutePrimaryAction(LiveActivityActionKind.PlayPause));
@@ -137,6 +140,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(ShowPreviousNextControls));
                 OnPropertyChanged(nameof(ShowOpenSourceAppControl));
                 OnPropertyChanged(nameof(ShowDismissControl));
+                OnPropertyChanged(nameof(ShowExpandControl));
                 RaiseCommandCanExecuteChanged();
             }
         }
@@ -155,6 +159,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(ShowUpSecondaryTiles));
                 OnPropertyChanged(nameof(ShowDownSecondaryTiles));
                 OnPropertyChanged(nameof(ShowPreviousNextControls));
+                OnPropertyChanged(nameof(ShowExpandControl));
                 RefreshWindowBounds();
             }
         }
@@ -217,6 +222,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public double ActivityTypeFontSize => CurrentMetrics.TypeFontSize;
 
+    public double ActivityGlyphFontSize => Math.Round(CurrentMetrics.IconSize * 0.54);
+
     public string PlayPauseGlyph => PrimaryActivity?.State == LiveActivityState.Paused
         ? "\uE768"
         : "\uE769";
@@ -237,13 +244,15 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public bool ShowMediaTransportControls => PrimaryActivity?.Type == LiveActivityType.Media;
 
-    public bool ShowPreviousNextControls => IsExpanded && ShowMediaTransportControls;
+    public bool ShowPreviousNextControls => ShowMediaTransportControls;
 
     public bool ShowOpenSourceAppControl =>
         PrimaryActivity?.SupportsAction(LiveActivityActionKind.OpenSourceApp) == true &&
         _commandRouter.CanExecute(PrimaryActivity.Id, LiveActivityActionKind.OpenSourceApp);
 
     public bool ShowDismissControl => PrimaryActivity is not null && !ShowMediaTransportControls;
+
+    public bool ShowExpandControl => PrimaryActivity is not null && HasSecondaryActivities;
 
     public bool IsExpansionUp
     {
@@ -412,6 +421,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public ICommand SelectActivityCommand { get; }
 
+    public ICommand PlayPauseActivityCommand { get; }
+
     public ICommand PlayPauseCommand { get; }
 
     public ICommand PreviousCommand { get; }
@@ -465,33 +476,29 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     {
         var visibleActivities = _activityStore.VisibleActivities.ToList();
         var previousVisibleCount = Activities.Count;
-        Activities.Clear();
-        foreach (var activity in visibleActivities)
-        {
-            Activities.Add(new LiveActivityViewModel(activity));
-        }
+        SynchronizeActivities(visibleActivities);
 
-        if (visibleActivities.Count == 0)
+        if (Activities.Count == 0)
         {
             _selectedActivityId = null;
             PrimaryActivity = null;
         }
         else
         {
-            var selectedActivity = visibleActivities.FirstOrDefault(activity => activity.Id == _selectedActivityId) ??
-                _activityStore.PrimaryActivity ??
-                visibleActivities[0];
+            var selectedActivity = Activities.FirstOrDefault(activity => activity.Id == _selectedActivityId) ??
+                FindViewModel(_activityStore.PrimaryActivity?.Id) ??
+                Activities[0];
             _selectedActivityId = selectedActivity.Id;
-            PrimaryActivity = new LiveActivityViewModel(selectedActivity);
+            PrimaryActivity = selectedActivity;
         }
 
-        SecondaryActivities.Clear();
-        foreach (var activity in visibleActivities
-            .Where(activity => activity.Id != PrimaryActivity?.Id)
-            .Take(MaxSecondaryTiles))
-        {
-            SecondaryActivities.Add(new LiveActivityViewModel(activity));
-        }
+        RefreshSelectionState();
+        SynchronizeActivityViewModels(
+            SecondaryActivities,
+            Activities
+                .Where(activity => activity.Id != PrimaryActivity?.Id)
+                .Take(MaxSecondaryTiles)
+                .ToArray());
 
         if (PrimaryActivity is null)
         {
@@ -505,11 +512,121 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasSecondaryActivities));
         OnPropertyChanged(nameof(ShowUpSecondaryTiles));
         OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+        OnPropertyChanged(nameof(ShowExpandControl));
+        NotifyPrimaryActivityContextChanged();
         WinLiveDiagnostics.Write(
             $"RefreshFromStore activities={Activities.Count} primary='{PrimaryActivity?.Title}' visible={IsIslandVisible} suppressed={IsFullScreenSuppressed}");
         RefreshWindowBounds();
         _trayCommandService.PublishIslandVisibility(IsIslandVisible);
         RaiseCommandCanExecuteChanged();
+    }
+
+    private void SynchronizeActivities(IReadOnlyList<LiveActivity> visibleActivities)
+    {
+        var visibleById = visibleActivities.ToDictionary(activity => activity.Id, StringComparer.Ordinal);
+
+        for (var index = Activities.Count - 1; index >= 0; index--)
+        {
+            if (!visibleById.ContainsKey(Activities[index].Id))
+            {
+                Activities.RemoveAt(index);
+            }
+        }
+
+        foreach (var activity in visibleActivities)
+        {
+            var viewModel = Activities.FirstOrDefault(item => item.Id == activity.Id);
+            if (viewModel is null)
+            {
+                Activities.Add(new LiveActivityViewModel(activity));
+            }
+            else
+            {
+                viewModel.Update(activity);
+            }
+        }
+    }
+
+    private void RefreshSelectionState()
+    {
+        foreach (var activity in Activities)
+        {
+            activity.IsSelected = PrimaryActivity is not null &&
+                string.Equals(activity.Id, PrimaryActivity.Id, StringComparison.Ordinal);
+        }
+    }
+
+    private LiveActivityViewModel? FindViewModel(string? id)
+    {
+        return string.IsNullOrWhiteSpace(id)
+            ? null
+            : Activities.FirstOrDefault(activity => activity.Id == id);
+    }
+
+    private static void SynchronizeActivityViewModels(
+        ObservableCollection<LiveActivityViewModel> collection,
+        IReadOnlyList<LiveActivityViewModel> desired)
+    {
+        for (var index = collection.Count - 1; index >= 0; index--)
+        {
+            if (!desired.Contains(collection[index]))
+            {
+                collection.RemoveAt(index);
+            }
+        }
+
+        for (var desiredIndex = 0; desiredIndex < desired.Count; desiredIndex++)
+        {
+            var item = desired[desiredIndex];
+            if (desiredIndex < collection.Count && ReferenceEquals(collection[desiredIndex], item))
+            {
+                continue;
+            }
+
+            var existingIndex = IndexOfReference(collection, item);
+            if (existingIndex >= 0)
+            {
+                collection.Move(existingIndex, desiredIndex);
+            }
+            else
+            {
+                collection.Insert(desiredIndex, item);
+            }
+        }
+
+        while (collection.Count > desired.Count)
+        {
+            collection.RemoveAt(collection.Count - 1);
+        }
+    }
+
+    private static int IndexOfReference(
+        ObservableCollection<LiveActivityViewModel> collection,
+        LiveActivityViewModel item)
+    {
+        for (var index = 0; index < collection.Count; index++)
+        {
+            if (ReferenceEquals(collection[index], item))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private void NotifyPrimaryActivityContextChanged()
+    {
+        OnPropertyChanged(nameof(IsIslandVisible));
+        OnPropertyChanged(nameof(PlayPauseGlyph));
+        OnPropertyChanged(nameof(HasSecondaryActivities));
+        OnPropertyChanged(nameof(ShowUpSecondaryTiles));
+        OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+        OnPropertyChanged(nameof(ShowMediaTransportControls));
+        OnPropertyChanged(nameof(ShowPreviousNextControls));
+        OnPropertyChanged(nameof(ShowOpenSourceAppControl));
+        OnPropertyChanged(nameof(ShowDismissControl));
+        OnPropertyChanged(nameof(ShowExpandControl));
     }
 
     private void RefreshWindowBounds()
@@ -575,20 +692,43 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     private bool CanExecutePrimaryAction(LiveActivityActionKind action)
     {
         return PrimaryActivity is not null &&
-            PrimaryActivity.SupportsAction(action) &&
-            _commandRouter.CanExecute(PrimaryActivity.Id, action);
+            CanExecuteActivityAction(PrimaryActivity.Id, action);
+    }
+
+    private bool CanExecuteActivityAction(object? parameter, LiveActivityActionKind action)
+    {
+        var id = GetActivityIdParameter(parameter);
+        var activity = FindViewModel(id);
+        return activity is not null &&
+            activity.SupportsAction(action) &&
+            _commandRouter.CanExecute(activity.Id, action);
     }
 
     private async Task ExecutePrimaryActionAsync(
         LiveActivityActionKind action,
         CancellationToken cancellationToken)
     {
-        if (PrimaryActivity is null || !CanExecutePrimaryAction(action))
+        if (PrimaryActivity is null)
         {
             return;
         }
 
-        await _commandRouter.ExecuteAsync(PrimaryActivity.Id, action, cancellationToken)
+        await ExecuteActivityActionAsync(PrimaryActivity.Id, action, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task ExecuteActivityActionAsync(
+        object? parameter,
+        LiveActivityActionKind action,
+        CancellationToken cancellationToken)
+    {
+        var id = GetActivityIdParameter(parameter);
+        if (!CanExecuteActivityAction(id, action))
+        {
+            return;
+        }
+
+        await _commandRouter.ExecuteAsync(id!, action, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -682,6 +822,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IslandTilePadding));
         OnPropertyChanged(nameof(ActivityIconSize));
         OnPropertyChanged(nameof(ActivityIconCornerRadius));
+        OnPropertyChanged(nameof(ActivityGlyphFontSize));
         OnPropertyChanged(nameof(ActivityTitleFontSize));
         OnPropertyChanged(nameof(ActivitySubtitleFontSize));
         OnPropertyChanged(nameof(ActivityTypeFontSize));
@@ -825,6 +966,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         {
             ToggleExpandCommand,
             SelectActivityCommand,
+            PlayPauseActivityCommand,
             PlayPauseCommand,
             PreviousCommand,
             NextCommand,

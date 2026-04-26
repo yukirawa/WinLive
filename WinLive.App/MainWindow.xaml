@@ -48,44 +48,74 @@
             </Setter>
         </Style>
 
+        <Style x:Key="PrimaryTileStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource IslandTileStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding PrimaryActivity.IsEmphasized}" Value="True">
+                    <Setter Property="Effect">
+                        <Setter.Value>
+                            <DropShadowEffect BlurRadius="24"
+                                              ShadowDepth="5"
+                                              Direction="270"
+                                              Opacity="0.44"
+                                              Color="#4AAFEA" />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="SecondaryTileStyle"
                TargetType="Border"
                BasedOn="{StaticResource IslandTileStyle}">
             <Setter Property="Background" Value="#D9111820" />
         </Style>
 
-        <Style x:Key="TileButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Focusable" Value="False" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="VerticalContentAlignment" Value="Stretch" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <Style x:Key="SecondaryActivityTileStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource SecondaryTileStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEmphasized}" Value="True">
+                    <Setter Property="Effect">
+                        <Setter.Value>
+                            <DropShadowEffect BlurRadius="22"
+                                              ShadowDepth="5"
+                                              Direction="270"
+                                              Opacity="0.4"
+                                              Color="#4AAFEA" />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
-        <DataTemplate x:Key="ActivityTileTemplate">
-            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                <Border Width="{Binding DataContext.ActivityIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                        Height="{Binding DataContext.ActivityIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CornerRadius="{Binding DataContext.ActivityIconCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}"
-                        Background="#24FFFFFF"
-                        VerticalAlignment="Center">
-                    <TextBlock Text="{Binding TypeLabel}"
-                               Foreground="#DFFFFFFF"
-                               FontSize="{Binding DataContext.ActivityTypeFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center" />
-                </Border>
+        <Style x:Key="ActivityIconGlyphStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="Foreground" Value="#DFFFFFFF" />
+            <Setter Property="FontSize" Value="{Binding DataContext.ActivityGlyphFontSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <DataTemplate x:Key="ActivitySummaryTemplate">
+            <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                <Grid Width="{Binding DataContext.ActivityIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                      Height="{Binding DataContext.ActivityIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                      VerticalAlignment="Center">
+                    <Border CornerRadius="{Binding DataContext.ActivityIconCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Background="#24FFFFFF"
+                            Visibility="{Binding AlbumArtSource, Converter={StaticResource NullToInverseVisibilityConverter}}">
+                        <TextBlock Style="{StaticResource ActivityIconGlyphStyle}"
+                                   Text="{Binding ActivityIconGlyph}" />
+                    </Border>
+                    <Border CornerRadius="{Binding DataContext.ActivityIconCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}"
+                            ClipToBounds="True"
+                            Visibility="{Binding AlbumArtSource, Converter={StaticResource NullToVisibilityConverter}}">
+                        <Image Source="{Binding AlbumArtSource}"
+                               Stretch="UniformToFill" />
+                    </Border>
+                </Grid>
 
                 <Grid Grid.Column="1" Margin="9,0,10,0">
                     <Grid.RowDefinitions>
@@ -110,12 +140,6 @@
                                  Margin="0,5,0,0"
                                  Visibility="{Binding Progress, Converter={StaticResource ProgressVisibilityConverter}}" />
                 </Grid>
-
-                <TextBlock Grid.Column="2"
-                           Text="{Binding StateLabel}"
-                           Foreground="#90FFFFFF"
-                           FontSize="{Binding DataContext.ActivityTypeFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                           VerticalAlignment="Center" />
             </Grid>
         </DataTemplate>
     </Window.Resources>
@@ -144,93 +168,58 @@
                           Visibility="{Binding ShowUpSecondaryTiles, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Button Style="{StaticResource TileButtonStyle}"
-                                Command="{Binding DataContext.SelectActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                CommandParameter="{Binding Id}">
-                            <Border Style="{StaticResource SecondaryTileStyle}"
-                                    Margin="0,0,0,8"
-                                    Opacity="0">
-                                <Border.RenderTransform>
-                                    <TranslateTransform Y="-8" />
-                                </Border.RenderTransform>
-                                <Border.Triggers>
-                                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                 To="1"
-                                                                 Duration="0:0:0.18">
-                                                    <DoubleAnimation.EasingFunction>
-                                                        <QuadraticEase EasingMode="EaseOut" />
-                                                    </DoubleAnimation.EasingFunction>
-                                                </DoubleAnimation>
-                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                                 To="0"
-                                                                 Duration="0:0:0.22">
-                                                    <DoubleAnimation.EasingFunction>
-                                                        <CubicEase EasingMode="EaseOut" />
-                                                    </DoubleAnimation.EasingFunction>
-                                                </DoubleAnimation>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </EventTrigger>
-                                </Border.Triggers>
+                        <Border Style="{StaticResource SecondaryActivityTileStyle}"
+                                Margin="0,0,0,8"
+                                Tag="{Binding Id}"
+                                Opacity="0">
+                            <Border.RenderTransform>
+                                <TranslateTransform Y="-8" />
+                            </Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                             To="0"
+                                                             Duration="0:0:0.22">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
+
+                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                                 <ContentPresenter Content="{Binding}"
-                                                  ContentTemplate="{StaticResource ActivityTileTemplate}" />
-                            </Border>
-                        </Button>
+                                                  ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource IconButtonStyle}"
+                                        Content="{Binding PlayPauseGlyph}"
+                                        Command="{Binding DataContext.PlayPauseActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding Id}"
+                                        ToolTip="Play / pause"
+                                        Visibility="{Binding ShowSecondaryPlayPauseControl, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <Border Style="{StaticResource IslandTileStyle}">
-                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                    <Grid Width="{Binding ActivityIconSize}"
-                          Height="{Binding ActivityIconSize}"
-                          VerticalAlignment="Center">
-                        <Border CornerRadius="{Binding ActivityIconCornerRadius}"
-                                Background="#2BFFFFFF"
-                                Visibility="{Binding PrimaryActivity.AlbumArtSource, Converter={StaticResource NullToInverseVisibilityConverter}}">
-                            <TextBlock Text="{Binding PrimaryActivity.TypeLabel}"
-                                       Foreground="#DFFFFFFF"
-                                       FontSize="{Binding ActivityTypeFontSize}"
-                                       FontWeight="SemiBold"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Border>
-                        <Border CornerRadius="{Binding ActivityIconCornerRadius}"
-                                ClipToBounds="True"
-                                Visibility="{Binding PrimaryActivity.AlbumArtSource, Converter={StaticResource NullToVisibilityConverter}}">
-                            <Image Source="{Binding PrimaryActivity.AlbumArtSource}"
-                                   Stretch="UniformToFill" />
-                        </Border>
-                    </Grid>
+            <Border Style="{StaticResource PrimaryTileStyle}">
+                <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <ContentPresenter Content="{Binding PrimaryActivity}"
+                                      ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
 
-                    <Grid Grid.Column="1" MinWidth="120" Margin="9,0,10,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="{Binding PrimaryActivity.Title}"
-                                   Foreground="#F7FFFFFF"
-                                   FontSize="{Binding ActivityTitleFontSize}"
-                                   FontWeight="SemiBold"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Row="1"
-                                   Text="{Binding PrimaryActivity.Subtitle}"
-                                   Foreground="#B8FFFFFF"
-                                   FontSize="{Binding ActivitySubtitleFontSize}"
-                                   Margin="0,1,0,0"
-                                   TextTrimming="CharacterEllipsis" />
-                        <ProgressBar Grid.Row="2"
-                                     Value="{Binding PrimaryActivity.Progress, Mode=OneWay}"
-                                     Maximum="1"
-                                     Margin="0,5,0,0"
-                                     Visibility="{Binding PrimaryActivity.Progress, Converter={StaticResource ProgressVisibilityConverter}}" />
-                    </Grid>
-
-                    <StackPanel Grid.Column="2"
+                    <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
                         <Button Style="{StaticResource IconButtonStyle}"
@@ -266,7 +255,8 @@
                                 Content="{Binding ExpandGlyph}"
                                 Command="{Binding ToggleExpandCommand}"
                                 ToolTip="Expand"
-                                Margin="6,0,0,0" />
+                                Margin="6,0,0,0"
+                                Visibility="{Binding ShowExpandControl, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -275,41 +265,48 @@
                           Visibility="{Binding ShowDownSecondaryTiles, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Button Style="{StaticResource TileButtonStyle}"
-                                Command="{Binding DataContext.SelectActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                CommandParameter="{Binding Id}">
-                            <Border Style="{StaticResource SecondaryTileStyle}"
-                                    Margin="0,8,0,0"
-                                    Opacity="0">
-                                <Border.RenderTransform>
-                                    <TranslateTransform Y="-8" />
-                                </Border.RenderTransform>
-                                <Border.Triggers>
-                                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                 To="1"
-                                                                 Duration="0:0:0.18">
-                                                    <DoubleAnimation.EasingFunction>
-                                                        <QuadraticEase EasingMode="EaseOut" />
-                                                    </DoubleAnimation.EasingFunction>
-                                                </DoubleAnimation>
-                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                                 To="0"
-                                                                 Duration="0:0:0.22">
-                                                    <DoubleAnimation.EasingFunction>
-                                                        <CubicEase EasingMode="EaseOut" />
-                                                    </DoubleAnimation.EasingFunction>
-                                                </DoubleAnimation>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </EventTrigger>
-                                </Border.Triggers>
+                        <Border Style="{StaticResource SecondaryActivityTileStyle}"
+                                Margin="0,8,0,0"
+                                Tag="{Binding Id}"
+                                Opacity="0">
+                            <Border.RenderTransform>
+                                <TranslateTransform Y="-8" />
+                            </Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                             To="0"
+                                                             Duration="0:0:0.22">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
+
+                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                                 <ContentPresenter Content="{Binding}"
-                                                  ContentTemplate="{StaticResource ActivityTileTemplate}" />
-                            </Border>
-                        </Button>
+                                                  ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource IconButtonStyle}"
+                                        Content="{Binding PlayPauseGlyph}"
+                                        Command="{Binding DataContext.PlayPauseActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding Id}"
+                                        ToolTip="Play / pause"
+                                        Visibility="{Binding ShowSecondaryPlayPauseControl, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

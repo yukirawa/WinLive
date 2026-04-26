@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private double _dragStartTop;
     private bool _isDragging;
     private bool _dragCaptured;
+    private string? _pressedSecondaryActivityId;
 
     public MainWindow()
     {
@@ -56,11 +57,14 @@ public partial class MainWindow : Window
 
     private void Island_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _pressedSecondaryActivityId = null;
+
         if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) is not null)
         {
             return;
         }
 
+        _pressedSecondaryActivityId = FindTaggedActivityId(e.OriginalSource as DependencyObject);
         _dragStartPoint = e.GetPosition(this);
         _dragStartLeft = Left;
         _dragStartTop = Top;
@@ -95,6 +99,9 @@ public partial class MainWindow : Window
 
     private async void Island_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        var pressedSecondaryActivityId = _pressedSecondaryActivityId;
+        _pressedSecondaryActivityId = null;
+
         if (_dragCaptured)
         {
             IslandSurface.ReleaseMouseCapture();
@@ -118,8 +125,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (DataContext is WinLiveShellViewModel viewModel &&
-            viewModel.ToggleExpandCommand.CanExecute(null))
+        if (DataContext is not WinLiveShellViewModel viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.IsExpanded &&
+            !string.IsNullOrWhiteSpace(pressedSecondaryActivityId) &&
+            viewModel.SelectActivityCommand.CanExecute(pressedSecondaryActivityId))
+        {
+            viewModel.SelectActivityCommand.Execute(pressedSecondaryActivityId);
+            e.Handled = true;
+            return;
+        }
+
+        if (viewModel.ToggleExpandCommand.CanExecute(null))
         {
             viewModel.ToggleExpandCommand.Execute(null);
             e.Handled = true;
@@ -134,6 +154,22 @@ public partial class MainWindow : Window
             if (current is T match)
             {
                 return match;
+            }
+
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static string? FindTaggedActivityId(DependencyObject? current)
+    {
+        while (current is not null)
+        {
+            if (current is FrameworkElement { Tag: string id } &&
+                !string.IsNullOrWhiteSpace(id))
+            {
+                return id;
             }
 
             current = System.Windows.Media.VisualTreeHelper.GetParent(current);
