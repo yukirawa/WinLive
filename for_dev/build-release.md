@@ -55,10 +55,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-onefile.ps1 -Version 
 WinLive_v1.0.1.exe
 ```
 
-v1.2.0 を発行する場合:
+v1.1.0 を発行する場合:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\publish-onefile.ps1 -Version 1.2.0
+powershell -ExecutionPolicy Bypass -File .\scripts\publish-onefile.ps1 -Version 1.1.0
 ```
 
 ## framework-dependent 発行

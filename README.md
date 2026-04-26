@@ -62,7 +62,7 @@ dotnet run --project tools/WinLive.ApiDemo -- --token "<settings window token>" 
 ```text
 WinLive_v1.0.0.exe
 WinLive_v1.0.1.exe
-WinLive_v1.2.0.exe
+WinLive_v1.1.0.exe
 ```
 
 ## 注意点

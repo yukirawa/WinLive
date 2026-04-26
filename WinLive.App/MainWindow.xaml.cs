@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     private double _dragStartTop;
     private bool _isDragging;
     private bool _dragCaptured;
-    private string? _pressedSecondaryActivityId;
+    private string? _pressedActivityId;
 
     public MainWindow()
     {
@@ -57,14 +57,14 @@ public partial class MainWindow : Window
 
     private void Island_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _pressedSecondaryActivityId = null;
+        _pressedActivityId = null;
 
         if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) is not null)
         {
             return;
         }
 
-        _pressedSecondaryActivityId = FindTaggedActivityId(e.OriginalSource as DependencyObject);
+        _pressedActivityId = FindTaggedActivityId(e.OriginalSource as DependencyObject);
         _dragStartPoint = e.GetPosition(this);
         _dragStartLeft = Left;
         _dragStartTop = Top;
@@ -99,8 +99,8 @@ public partial class MainWindow : Window
 
     private async void Island_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        var pressedSecondaryActivityId = _pressedSecondaryActivityId;
-        _pressedSecondaryActivityId = null;
+        var pressedActivityId = _pressedActivityId;
+        _pressedActivityId = null;
 
         if (_dragCaptured)
         {
@@ -130,20 +130,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (viewModel.IsExpanded &&
-            !string.IsNullOrWhiteSpace(pressedSecondaryActivityId) &&
-            viewModel.SelectActivityCommand.CanExecute(pressedSecondaryActivityId))
+        if (!string.IsNullOrWhiteSpace(pressedActivityId) &&
+            viewModel.SelectActivityCommand.CanExecute(pressedActivityId))
         {
-            viewModel.SelectActivityCommand.Execute(pressedSecondaryActivityId);
+            viewModel.SelectActivityCommand.Execute(pressedActivityId);
             e.Handled = true;
             return;
         }
 
-        if (viewModel.ToggleExpandCommand.CanExecute(null))
-        {
-            viewModel.ToggleExpandCommand.Execute(null);
-            e.Handled = true;
-        }
+        e.Handled = true;
     }
 
     private static T? FindAncestor<T>(DependencyObject? current)

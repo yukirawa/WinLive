@@ -142,6 +142,57 @@
                 </Grid>
             </Grid>
         </DataTemplate>
+
+        <DataTemplate x:Key="ActivityTileContentTemplate">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <ContentPresenter Content="{Binding}"
+                                  ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Button Style="{StaticResource IconButtonStyle}"
+                            Content="&#xE100;"
+                            Command="{Binding DataContext.PreviousActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip="Previous"
+                            Visibility="{Binding IsMedia, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Style="{StaticResource IconButtonStyle}"
+                            Content="{Binding PlayPauseGlyph}"
+                            Command="{Binding DataContext.PlayPauseActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip="Play / pause"
+                            Margin="6,0,0,0"
+                            Visibility="{Binding IsMedia, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Style="{StaticResource IconButtonStyle}"
+                            Content="&#xE101;"
+                            Command="{Binding DataContext.NextActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip="Next"
+                            Margin="6,0,0,0"
+                            Visibility="{Binding IsMedia, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Style="{StaticResource IconButtonStyle}"
+                            Content="&#xE8A7;"
+                            Command="{Binding DataContext.OpenSourceAppActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip="Open source"
+                            Margin="6,0,0,0"
+                            Visibility="{Binding IsMedia, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Style="{StaticResource IconButtonStyle}"
+                            Content="&#xE711;"
+                            Command="{Binding DataContext.DismissActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip="Dismiss"
+                            Margin="6,0,0,0"
+                            Visibility="{Binding IsMedia, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                    <Button Style="{StaticResource IconButtonStyle}"
+                            Content="{Binding DataContext.ExpandGlyph, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Command="{Binding DataContext.ToggleExpandCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            ToolTip="Expand"
+                            Margin="6,0,0,0" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid x:Name="IslandSurface"
@@ -198,67 +249,17 @@
                                 </EventTrigger>
                             </Border.Triggers>
 
-                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                                <ContentPresenter Content="{Binding}"
-                                                  ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
-                                <Button Grid.Column="1"
-                                        Style="{StaticResource IconButtonStyle}"
-                                        Content="{Binding PlayPauseGlyph}"
-                                        Command="{Binding DataContext.PlayPauseActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        CommandParameter="{Binding Id}"
-                                        ToolTip="Play / pause"
-                                        Visibility="{Binding ShowSecondaryPlayPauseControl, Converter={StaticResource BoolToVisibilityConverter}}" />
-                            </Grid>
+                            <ContentPresenter Content="{Binding}"
+                                              ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <Border Style="{StaticResource PrimaryTileStyle}">
-                <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                    <ContentPresenter Content="{Binding PrimaryActivity}"
-                                      ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
-
-                    <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
-                                VerticalAlignment="Center">
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Content="&#xE100;"
-                                Command="{Binding PreviousCommand}"
-                                ToolTip="Previous"
-                                Visibility="{Binding ShowPreviousNextControls, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Content="{Binding PlayPauseGlyph}"
-                                Command="{Binding PlayPauseCommand}"
-                                ToolTip="Play / pause"
-                                Margin="6,0,0,0"
-                                Visibility="{Binding ShowMediaTransportControls, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Content="&#xE101;"
-                                Command="{Binding NextCommand}"
-                                ToolTip="Next"
-                                Margin="6,0,0,0"
-                                Visibility="{Binding ShowPreviousNextControls, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Content="&#xE8A7;"
-                                Command="{Binding OpenSourceAppCommand}"
-                                ToolTip="Open source"
-                                Margin="6,0,0,0"
-                                Visibility="{Binding ShowOpenSourceAppControl, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Content="&#xE711;"
-                                Command="{Binding DismissPrimaryCommand}"
-                                ToolTip="Dismiss"
-                                Margin="6,0,0,0"
-                                Visibility="{Binding ShowDismissControl, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Content="{Binding ExpandGlyph}"
-                                Command="{Binding ToggleExpandCommand}"
-                                ToolTip="Expand"
-                                Margin="6,0,0,0"
-                                Visibility="{Binding ShowExpandControl, Converter={StaticResource BoolToVisibilityConverter}}" />
-                    </StackPanel>
-                </Grid>
+            <Border Style="{StaticResource PrimaryTileStyle}"
+                    Tag="{Binding PrimaryActivity.Id}">
+                <ContentPresenter Content="{Binding PrimaryActivity}"
+                                  ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
             </Border>
 
             <ItemsControl ItemsSource="{Binding SecondaryActivities}"
@@ -295,17 +296,8 @@
                                 </EventTrigger>
                             </Border.Triggers>
 
-                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
-                                <ContentPresenter Content="{Binding}"
-                                                  ContentTemplate="{StaticResource ActivitySummaryTemplate}" />
-                                <Button Grid.Column="1"
-                                        Style="{StaticResource IconButtonStyle}"
-                                        Content="{Binding PlayPauseGlyph}"
-                                        Command="{Binding DataContext.PlayPauseActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        CommandParameter="{Binding Id}"
-                                        ToolTip="Play / pause"
-                                        Visibility="{Binding ShowSecondaryPlayPauseControl, Converter={StaticResource BoolToVisibilityConverter}}" />
-                            </Grid>
+                            <ContentPresenter Content="{Binding}"
+                                              ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

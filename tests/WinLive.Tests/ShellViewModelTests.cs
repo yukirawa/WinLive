@@ -216,13 +216,17 @@ public sealed class ShellViewModelTests
         Assert.False(viewModel.IsExpanded);
         Assert.True(viewModel.ShowMediaTransportControls);
         Assert.True(viewModel.ShowPreviousNextControls);
-        Assert.False(viewModel.ShowExpandControl);
+        Assert.True(viewModel.ShowOpenSourceAppControl);
+        Assert.False(viewModel.PreviousCommand.CanExecute(null));
+        Assert.False(viewModel.NextCommand.CanExecute(null));
+        Assert.False(viewModel.OpenSourceAppCommand.CanExecute(null));
+        Assert.True(viewModel.ShowExpandControl);
         Assert.False(viewModel.ToggleExpandCommand.CanExecute(null));
         viewModel.Dispose();
     }
 
     [Fact]
-    public void AddingSecondActivityKeepsPrimaryAndAutoExpands()
+    public void AddingSecondActivityKeepsPrimaryAndWaitsForExpandButton()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -251,18 +255,24 @@ public sealed class ShellViewModelTests
         });
 
         Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
-        Assert.True(viewModel.IsExpanded);
+        Assert.False(viewModel.IsExpanded);
         Assert.True(viewModel.PrimaryActivity?.IsSelected);
         Assert.True(viewModel.HasSecondaryActivities);
         Assert.True(viewModel.ShowExpandControl);
         Assert.True(viewModel.ToggleExpandCommand.CanExecute(null));
+        Assert.False(viewModel.ShowUpSecondaryTiles);
+        Assert.False(viewModel.ShowDownSecondaryTiles);
+
+        viewModel.ToggleExpandCommand.Execute(null);
+
+        Assert.True(viewModel.IsExpanded);
         Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:second");
         Assert.DoesNotContain(viewModel.SecondaryActivities, item => item.IsSelected);
         viewModel.Dispose();
     }
 
     [Fact]
-    public async Task SelectActivitySwitchesPrimaryAndCommandTarget()
+    public async Task SelectActivitySwitchesPrimaryKeepsExpansionAndCommandTarget()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -280,9 +290,11 @@ public sealed class ShellViewModelTests
         store.Upsert(MediaActivity("media:second", "Second", 10));
         router.Allow("media:second", LiveActivityActionKind.PlayPause);
 
+        viewModel.ToggleExpandCommand.Execute(null);
         viewModel.SelectActivityCommand.Execute("media:second");
 
         Assert.Equal("media:second", viewModel.PrimaryActivity?.Id);
+        Assert.True(viewModel.IsExpanded);
         Assert.True(viewModel.PrimaryActivity?.IsSelected);
         Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:first" && !item.IsSelected);
         Assert.True(viewModel.PlayPauseCommand.CanExecute(null));
@@ -297,7 +309,58 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task SecondaryPlayPauseCommandTargetsTileWithoutSwitchingPrimary()
+    public async Task ActivityMediaCommandsTargetTileWithoutSwitchingPrimary()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var router = new FakeCommandRouter();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            router,
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        var actions = new[]
+        {
+            LiveActivityActionKind.Previous,
+            LiveActivityActionKind.PlayPause,
+            LiveActivityActionKind.Next,
+            LiveActivityActionKind.OpenSourceApp
+        };
+        store.Upsert(MediaActivity("media:first", "First", 100, actions));
+        store.Upsert(MediaActivity("media:second", "Second", 10, actions));
+        foreach (var action in actions)
+        {
+            router.Allow("media:second", action);
+        }
+
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        Assert.True(viewModel.PreviousActivityCommand.CanExecute("media:second"));
+        Assert.True(viewModel.PlayPauseActivityCommand.CanExecute("media:second"));
+        Assert.True(viewModel.NextActivityCommand.CanExecute("media:second"));
+        Assert.True(viewModel.OpenSourceAppActivityCommand.CanExecute("media:second"));
+
+        viewModel.PreviousActivityCommand.Execute("media:second");
+        viewModel.PlayPauseActivityCommand.Execute("media:second");
+        viewModel.NextActivityCommand.Execute("media:second");
+        viewModel.OpenSourceAppActivityCommand.Execute("media:second");
+        await Task.Yield();
+
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        foreach (var action in actions)
+        {
+            Assert.Contains(
+                router.ExecutedActions,
+                item => item.Id == "media:second" && item.Action == action);
+        }
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void ActivityMediaCommandsDisableUnsupportedActions()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -312,24 +375,17 @@ public sealed class ShellViewModelTests
             new WinLiveSettings());
 
         store.Upsert(MediaActivity("media:first", "First", 100));
-        store.Upsert(MediaActivity("media:second", "Second", 10));
-        router.Allow("media:second", LiveActivityActionKind.PlayPause);
+        router.Allow("media:first", LiveActivityActionKind.PlayPause);
 
-        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
-        Assert.True(viewModel.PlayPauseActivityCommand.CanExecute("media:second"));
-
-        viewModel.PlayPauseActivityCommand.Execute("media:second");
-        await Task.Yield();
-
-        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
-        Assert.Contains(
-            router.ExecutedActions,
-            item => item.Id == "media:second" && item.Action == LiveActivityActionKind.PlayPause);
+        Assert.True(viewModel.PlayPauseActivityCommand.CanExecute("media:first"));
+        Assert.False(viewModel.PreviousActivityCommand.CanExecute("media:first"));
+        Assert.False(viewModel.NextActivityCommand.CanExecute("media:first"));
+        Assert.False(viewModel.OpenSourceAppActivityCommand.CanExecute("media:first"));
         viewModel.Dispose();
     }
 
     [Fact]
-    public void RemovedSelectedActivityFallsBackAndClearsWhenEmpty()
+    public void RemovedSelectedActivityFallsBackAndCollapsesOnlyWhenSingleActivityRemains()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -344,11 +400,19 @@ public sealed class ShellViewModelTests
 
         store.Upsert(MediaActivity("media:first", "First", 100));
         store.Upsert(MediaActivity("media:second", "Second", 10));
+        store.Upsert(MediaActivity("media:third", "Third", 5));
+        viewModel.ToggleExpandCommand.Execute(null);
         viewModel.SelectActivityCommand.Execute("media:second");
 
         store.Remove("media:second");
 
         Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        Assert.True(viewModel.IsExpanded);
+
+        store.Remove("media:third");
+
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        Assert.False(viewModel.IsExpanded);
 
         store.Remove("media:first");
 
@@ -440,12 +504,19 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(originalOrder, viewModel.SecondaryActivities.Select(item => item.Id));
         Assert.Equal("primary", viewModel.PrimaryActivity?.Id);
-        Assert.True(viewModel.IsExpanded);
+        Assert.False(viewModel.IsExpanded);
         viewModel.Dispose();
     }
 
-    private static LiveActivity MediaActivity(string id, string title, int priority)
+    private static LiveActivity MediaActivity(
+        string id,
+        string title,
+        int priority,
+        params LiveActivityActionKind[] actions)
     {
+        var actionKinds = actions.Length == 0
+            ? new[] { LiveActivityActionKind.PlayPause }
+            : actions;
         return new LiveActivity
         {
             Id = id,
@@ -453,14 +524,13 @@ public sealed class ShellViewModelTests
             Title = title,
             State = LiveActivityState.Active,
             Priority = priority,
-            Actions =
-            [
-                new LiveActivityActionDescriptor
+            Actions = actionKinds
+                .Select(action => new LiveActivityActionDescriptor
                 {
-                    Kind = LiveActivityActionKind.PlayPause,
-                    DisplayName = "Play / pause"
-                }
-            ]
+                    Kind = action,
+                    DisplayName = action.ToString()
+                })
+                .ToArray()
         };
     }
 

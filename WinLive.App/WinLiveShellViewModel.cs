@@ -66,11 +66,23 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         Activities = new ObservableCollection<LiveActivityViewModel>();
         SecondaryActivities = new ObservableCollection<LiveActivityViewModel>();
-        ToggleExpandCommand = new RelayCommand(() => IsExpanded = !IsExpanded, () => ShowExpandControl);
+        ToggleExpandCommand = new RelayCommand(
+            () => IsExpanded = !IsExpanded,
+            () => PrimaryActivity is not null && HasSecondaryActivities);
         SelectActivityCommand = new RelayCommand(SelectActivity, CanSelectActivity);
+        PreviousActivityCommand = new AsyncRelayCommand(
+            (parameter, token) => ExecuteActivityActionAsync(parameter, LiveActivityActionKind.Previous, token),
+            parameter => CanExecuteActivityAction(parameter, LiveActivityActionKind.Previous));
         PlayPauseActivityCommand = new AsyncRelayCommand(
             (parameter, token) => ExecuteActivityActionAsync(parameter, LiveActivityActionKind.PlayPause, token),
             parameter => CanExecuteActivityAction(parameter, LiveActivityActionKind.PlayPause));
+        NextActivityCommand = new AsyncRelayCommand(
+            (parameter, token) => ExecuteActivityActionAsync(parameter, LiveActivityActionKind.Next, token),
+            parameter => CanExecuteActivityAction(parameter, LiveActivityActionKind.Next));
+        OpenSourceAppActivityCommand = new AsyncRelayCommand(
+            (parameter, token) => ExecuteActivityActionAsync(parameter, LiveActivityActionKind.OpenSourceApp, token),
+            parameter => CanExecuteActivityAction(parameter, LiveActivityActionKind.OpenSourceApp));
+        DismissActivityCommand = new RelayCommand(DismissActivity, CanDismissActivity);
         PlayPauseCommand = new AsyncRelayCommand(
             (_, token) => ExecutePrimaryActionAsync(LiveActivityActionKind.PlayPause, token),
             _ => CanExecutePrimaryAction(LiveActivityActionKind.PlayPause));
@@ -83,7 +95,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OpenSourceAppCommand = new AsyncRelayCommand(
             (_, token) => ExecutePrimaryActionAsync(LiveActivityActionKind.OpenSourceApp, token),
             _ => CanExecutePrimaryAction(LiveActivityActionKind.OpenSourceApp));
-        DismissPrimaryCommand = new RelayCommand(DismissPrimary, () => PrimaryActivity is not null);
+        DismissPrimaryCommand = new RelayCommand(DismissPrimary, () => PrimaryActivity?.SupportsDismiss == true);
         OpenSettingsCommand = new RelayCommand(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
         ResetPositionCommand = new AsyncRelayCommand(ResetPositionAsync);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
@@ -247,12 +259,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     public bool ShowPreviousNextControls => ShowMediaTransportControls;
 
     public bool ShowOpenSourceAppControl =>
-        PrimaryActivity?.SupportsAction(LiveActivityActionKind.OpenSourceApp) == true &&
-        _commandRouter.CanExecute(PrimaryActivity.Id, LiveActivityActionKind.OpenSourceApp);
+        PrimaryActivity?.IsMedia == true;
 
     public bool ShowDismissControl => PrimaryActivity is not null && !ShowMediaTransportControls;
 
-    public bool ShowExpandControl => PrimaryActivity is not null && HasSecondaryActivities;
+    public bool ShowExpandControl => PrimaryActivity is not null;
 
     public bool IsExpansionUp
     {
@@ -421,7 +432,15 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public ICommand SelectActivityCommand { get; }
 
+    public ICommand PreviousActivityCommand { get; }
+
     public ICommand PlayPauseActivityCommand { get; }
+
+    public ICommand NextActivityCommand { get; }
+
+    public ICommand OpenSourceAppActivityCommand { get; }
+
+    public ICommand DismissActivityCommand { get; }
 
     public ICommand PlayPauseCommand { get; }
 
@@ -475,7 +494,6 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     private void RefreshFromStore()
     {
         var visibleActivities = _activityStore.VisibleActivities.ToList();
-        var previousVisibleCount = Activities.Count;
         SynchronizeActivities(visibleActivities);
 
         if (Activities.Count == 0)
@@ -500,13 +518,9 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 .Take(MaxSecondaryTiles)
                 .ToArray());
 
-        if (PrimaryActivity is null)
+        if (PrimaryActivity is null || SecondaryActivities.Count == 0)
         {
             IsExpanded = false;
-        }
-        else if (previousVisibleCount <= 1 && visibleActivities.Count > 1)
-        {
-            IsExpanded = true;
         }
 
         OnPropertyChanged(nameof(HasSecondaryActivities));
@@ -734,10 +748,25 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     private void DismissPrimary()
     {
-        if (PrimaryActivity is not null)
+        DismissActivity(PrimaryActivity);
+    }
+
+    private bool CanDismissActivity(object? parameter)
+    {
+        var id = GetActivityIdParameter(parameter);
+        var activity = FindViewModel(id);
+        return activity?.SupportsDismiss == true;
+    }
+
+    private void DismissActivity(object? parameter)
+    {
+        var id = GetActivityIdParameter(parameter);
+        if (id is null || !CanDismissActivity(id))
         {
-            _activityStore.Remove(PrimaryActivity.Id, LiveActivityEndReason.Deleted);
+            return;
         }
+
+        _activityStore.Remove(id, LiveActivityEndReason.Deleted);
     }
 
     private bool CanSelectActivity(object? parameter)
@@ -966,7 +995,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         {
             ToggleExpandCommand,
             SelectActivityCommand,
+            PreviousActivityCommand,
             PlayPauseActivityCommand,
+            NextActivityCommand,
+            OpenSourceAppActivityCommand,
+            DismissActivityCommand,
             PlayPauseCommand,
             PreviousCommand,
             NextCommand,
