@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WinLive.Core/WinLive.Core.csproj" />
+    <Project Path="src/WinLive.Windows/WinLive.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WinLive.Tests/WinLive.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/WinLive.ApiDemo/WinLive.ApiDemo.csproj" />
+  </Folder>
+  <Project Path="WinLive.App/WinLive.App.csproj" />
+</Solution>
