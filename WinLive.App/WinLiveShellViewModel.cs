@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using WinLive.Core;
@@ -9,6 +10,12 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 {
     private const double TileGap = 8;
     private const int MaxSecondaryTiles = 3;
+    private static readonly LiveActivityType[] DemoActivityTypes =
+    [
+        LiveActivityType.Download,
+        LiveActivityType.Encode,
+        LiveActivityType.Timer
+    ];
     private static readonly IslandSizeMetrics SmallMetrics = new(320, 50, 20, 8, 32, 12, 12, 10, 8);
     private static readonly IslandSizeMetrics MediumMetrics = new(374, 56, 22, 9, 34, 12, 13, 11, 9);
     private static readonly IslandSizeMetrics LargeMetrics = new(430, 66, 26, 11, 42, 15, 15, 12, 10);
@@ -196,13 +203,13 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public double IslandTileHeight => CurrentMetrics.Height;
 
-    public double IslandTileCornerRadius => CurrentMetrics.CornerRadius;
+    public CornerRadius IslandTileCornerRadius => new(CurrentMetrics.CornerRadius);
 
     public double IslandTilePadding => CurrentMetrics.Padding;
 
     public double ActivityIconSize => CurrentMetrics.IconSize;
 
-    public double ActivityIconCornerRadius => CurrentMetrics.IconCornerRadius;
+    public CornerRadius ActivityIconCornerRadius => new(CurrentMetrics.IconCornerRadius);
 
     public double ActivityTitleFontSize => CurrentMetrics.TitleFontSize;
 
@@ -692,7 +699,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         StopDemoActivity();
 
         _demoActivityType = type;
-        _demoActivityId = $"demo:{type.ToString().ToLowerInvariant()}";
+        _demoActivityId = DemoActivityId(type);
         _demoActivityStartedAt = DateTimeOffset.UtcNow;
         _demoActivityDuration = type == LiveActivityType.Timer
             ? TimeSpan.FromSeconds(30)
@@ -706,13 +713,12 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     private void StopDemoActivity()
     {
-        if (_demoActivityId is null)
+        _demoActivityTimer.Stop();
+        foreach (var id in DemoActivityTypes.Select(DemoActivityId))
         {
-            return;
+            _activityStore.Remove(id, LiveActivityEndReason.Deleted);
         }
 
-        _demoActivityTimer.Stop();
-        _activityStore.Remove(_demoActivityId, LiveActivityEndReason.Deleted);
         _demoActivityId = null;
         RaiseCommandCanExecuteChanged();
     }
@@ -731,7 +737,6 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         if (progress >= 1)
         {
             _demoActivityTimer.Stop();
-            _demoActivityId = null;
             RaiseCommandCanExecuteChanged();
         }
     }
@@ -776,6 +781,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 ["demo"] = "settingsWindow"
             }
         });
+    }
+
+    private static string DemoActivityId(LiveActivityType type)
+    {
+        return $"demo:{type.ToString().ToLowerInvariant()}";
     }
 
     private async Task SaveSettingsAsync(CancellationToken cancellationToken)
