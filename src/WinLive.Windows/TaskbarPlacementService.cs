@@ -38,7 +38,7 @@ public sealed class TaskbarPlacementService : ITaskbarPlacementService
         }
 
         var width = Math.Min(Math.Max(desired.Width, 260), Math.Max(260, target.Width - Margin * 2));
-        var height = Math.Min(Math.Max(desired.Height, 64), Math.Max(64, target.Height - Margin * 2));
+        var height = Math.Min(Math.Max(desired.Height, 48), Math.Max(48, target.Height - Margin * 2));
         var left = Math.Clamp(desired.Left, target.Left + Margin, target.Right - width - Margin);
         var top = Math.Clamp(desired.Top, target.Top + Margin, target.Bottom - height - Margin);
         return new IslandBounds(left, top, width, height);

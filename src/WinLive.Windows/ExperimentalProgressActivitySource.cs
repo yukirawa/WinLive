@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using System.Windows.Automation;
 using WinLive.Core;
 
@@ -81,61 +79,57 @@ public sealed class ExperimentalProgressActivitySource : ILiveActivitySource
         {
             var windowName = SafeGet(() => window.Current.Name);
             var processId = SafeGet(() => window.Current.ProcessId);
-            if (string.IsNullOrWhiteSpace(windowName) || processId <= 0)
+            var windowIsOffscreen = SafeGet(() => window.Current.IsOffscreen);
+            if (string.IsNullOrWhiteSpace(windowName) || processId <= 0 || windowIsOffscreen)
             {
                 continue;
             }
 
+            var processName = TryGetProcessName(processId);
             var bars = window.FindAll(
                 TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ProgressBar));
 
             foreach (AutomationElement bar in bars)
             {
-                if (!TryReadProgress(bar, out var progress))
+                if (!TryReadRange(bar, out var minimum, out var maximum, out var value))
                 {
                     continue;
                 }
 
-                var barName = SafeGet(() => bar.Current.Name);
-                var automationId = SafeGet(() => bar.Current.AutomationId);
-                var id = BuildId(processId, windowName, automationId, barName);
-                seenIds.Add(id);
-
-                _store.Upsert(new LiveActivity
+                var snapshot = new ProgressBarSnapshot(
+                    processId,
+                    windowName,
+                    SafeGet(() => bar.Current.AutomationId),
+                    SafeGet(() => bar.Current.Name),
+                    SafeGet(() => bar.Current.ClassName),
+                    SafeGet(() => bar.Current.IsEnabled),
+                    SafeGet(() => bar.Current.IsOffscreen),
+                    minimum,
+                    maximum,
+                    value);
+                if (!ProgressActivityDetection.TryCreateActivity(snapshot, processName, out var activity))
                 {
-                    Id = id,
-                    Type = LiveActivityType.Experimental,
-                    State = progress >= 1 ? LiveActivityState.Completed : LiveActivityState.Active,
-                    Title = string.IsNullOrWhiteSpace(barName) ? windowName : barName,
-                    Subtitle = windowName,
-                    Progress = progress,
-                    Priority = 10,
-                    SourceApp = new LiveActivitySourceApp
-                    {
-                        Name = TryGetProcessName(processId),
-                        ProcessId = processId
-                    },
-                    Metadata = new Dictionary<string, string>
-                    {
-                        ["experimental"] = "uiAutomationProgressBar"
-                    }
-                });
+                    continue;
+                }
+
+                seenIds.Add(activity.Id);
+                _store.Upsert(activity);
             }
         }
 
-        foreach (var activity in _store.Activities.Where(item => item.Type == LiveActivityType.Experimental))
-        {
-            if (!seenIds.Contains(activity.Id))
-            {
-                _store.Remove(activity.Id, LiveActivityEndReason.SourceClosed);
-            }
-        }
+        ProgressActivityDetection.RemoveStaleActivities(_store, seenIds);
     }
 
-    private static bool TryReadProgress(AutomationElement element, out double progress)
+    private static bool TryReadRange(
+        AutomationElement element,
+        out double minimum,
+        out double maximum,
+        out double value)
     {
-        progress = 0;
+        minimum = 0;
+        maximum = 0;
+        value = 0;
         try
         {
             if (!element.TryGetCurrentPattern(RangeValuePattern.Pattern, out var rawPattern))
@@ -144,26 +138,15 @@ public sealed class ExperimentalProgressActivitySource : ILiveActivitySource
             }
 
             var pattern = (RangeValuePattern)rawPattern;
-            var range = pattern.Current.Maximum - pattern.Current.Minimum;
-            if (range <= 0 || pattern.Current.Value < pattern.Current.Minimum)
-            {
-                return false;
-            }
-
-            progress = (pattern.Current.Value - pattern.Current.Minimum) / range;
+            minimum = pattern.Current.Minimum;
+            maximum = pattern.Current.Maximum;
+            value = pattern.Current.Value;
             return true;
         }
         catch
         {
             return false;
         }
-    }
-
-    private static string BuildId(int processId, string windowName, string automationId, string barName)
-    {
-        var key = $"{processId}:{windowName}:{automationId}:{barName}";
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
-        return $"experimental:{Convert.ToHexString(hash)[..12].ToLowerInvariant()}";
     }
 
     private static string? TryGetProcessName(int processId)

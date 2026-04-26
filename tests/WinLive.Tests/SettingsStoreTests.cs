@@ -53,6 +53,27 @@ public sealed class SettingsStoreTests
 
         Assert.Equal("test-token", settings.ExternalApi.AuthToken);
         Assert.Equal(ThemePreference.System, settings.Theme);
+        Assert.Equal(IslandSizePreset.Medium, settings.IslandSize);
         Assert.False(settings.ExternalApi.Enabled);
+    }
+
+    [Fact]
+    public async Task SaveAndLoadPersistsIslandSizePreset()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"winlive-{Guid.NewGuid():N}", "settings.json");
+        var store = new AppDataSettingsStore(path);
+
+        await store.SaveAsync(new WinLiveSettings
+        {
+            IslandSize = IslandSizePreset.Large,
+            ExternalApi = new ExternalApiSettings
+            {
+                AuthToken = "test-token"
+            }
+        });
+
+        var settings = await store.LoadAsync();
+
+        Assert.Equal(IslandSizePreset.Large, settings.IslandSize);
     }
 }

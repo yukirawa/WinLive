@@ -7,10 +7,11 @@ namespace WinLive.App;
 
 public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 {
-    private const double CompactWidth = 374;
-    private const double CompactHeight = 56;
     private const double TileGap = 8;
     private const int MaxSecondaryTiles = 3;
+    private static readonly IslandSizeMetrics SmallMetrics = new(320, 50, 20, 8, 32, 12, 12, 10, 8);
+    private static readonly IslandSizeMetrics MediumMetrics = new(374, 56, 22, 9, 34, 12, 13, 11, 9);
+    private static readonly IslandSizeMetrics LargeMetrics = new(430, 66, 26, 11, 42, 15, 15, 12, 10);
 
     private readonly ILiveActivityStore _activityStore;
     private readonly ILiveActivityCommandRouter _commandRouter;
@@ -28,6 +29,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     private bool? _lastLoggedSuppression;
     private IslandBounds _windowBounds;
     private string _settingsStatus = string.Empty;
+    private readonly DispatcherTimer _demoActivityTimer;
+    private string? _demoActivityId;
+    private LiveActivityType _demoActivityType;
+    private DateTimeOffset _demoActivityStartedAt;
+    private TimeSpan _demoActivityDuration;
     private bool _isDisposed;
 
     public WinLiveShellViewModel(
@@ -72,6 +78,10 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         ResetPositionCommand = new AsyncRelayCommand(ResetPositionAsync);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
         RegenerateTokenCommand = new RelayCommand(RegenerateToken);
+        StartDemoDownloadCommand = new RelayCommand(() => StartDemoActivity(LiveActivityType.Download));
+        StartDemoEncodeCommand = new RelayCommand(() => StartDemoActivity(LiveActivityType.Encode));
+        StartDemoTimerCommand = new RelayCommand(() => StartDemoActivity(LiveActivityType.Timer));
+        StopDemoActivityCommand = new RelayCommand(StopDemoActivity, () => _demoActivityId is not null);
 
         _activityStore.ActivitiesChanged += OnActivitiesChanged;
         _trayCommandService.OpenSettingsRequested += OnOpenSettingsRequested;
@@ -84,6 +94,12 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         };
         _heartbeatTimer.Tick += OnHeartbeat;
         _heartbeatTimer.Start();
+
+        _demoActivityTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _demoActivityTimer.Tick += OnDemoActivityTick;
 
         RefreshFromStore();
         RefreshSuppression();
@@ -110,6 +126,10 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(HasSecondaryActivities));
                 OnPropertyChanged(nameof(ShowUpSecondaryTiles));
                 OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+                OnPropertyChanged(nameof(ShowMediaTransportControls));
+                OnPropertyChanged(nameof(ShowPreviousNextControls));
+                OnPropertyChanged(nameof(ShowOpenSourceAppControl));
+                OnPropertyChanged(nameof(ShowDismissControl));
                 RaiseCommandCanExecuteChanged();
             }
         }
@@ -127,6 +147,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(ExpandGlyph));
                 OnPropertyChanged(nameof(ShowUpSecondaryTiles));
                 OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+                OnPropertyChanged(nameof(ShowPreviousNextControls));
                 RefreshWindowBounds();
             }
         }
@@ -169,6 +190,26 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         private set => SetWindowBounds(_windowBounds with { Height = value });
     }
 
+    public double CompactWidth => CurrentMetrics.Width;
+
+    public double CompactHeight => CurrentMetrics.Height;
+
+    public double IslandTileHeight => CurrentMetrics.Height;
+
+    public double IslandTileCornerRadius => CurrentMetrics.CornerRadius;
+
+    public double IslandTilePadding => CurrentMetrics.Padding;
+
+    public double ActivityIconSize => CurrentMetrics.IconSize;
+
+    public double ActivityIconCornerRadius => CurrentMetrics.IconCornerRadius;
+
+    public double ActivityTitleFontSize => CurrentMetrics.TitleFontSize;
+
+    public double ActivitySubtitleFontSize => CurrentMetrics.SubtitleFontSize;
+
+    public double ActivityTypeFontSize => CurrentMetrics.TypeFontSize;
+
     public string PlayPauseGlyph => PrimaryActivity?.State == LiveActivityState.Paused
         ? "\uE768"
         : "\uE769";
@@ -186,6 +227,16 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         IsExpanded &&
         HasSecondaryActivities &&
         _settings.ExpansionDirection == IslandExpansionDirection.Down;
+
+    public bool ShowMediaTransportControls => PrimaryActivity?.Type == LiveActivityType.Media;
+
+    public bool ShowPreviousNextControls => IsExpanded && ShowMediaTransportControls;
+
+    public bool ShowOpenSourceAppControl =>
+        PrimaryActivity?.SupportsAction(LiveActivityActionKind.OpenSourceApp) == true &&
+        _commandRouter.CanExecute(PrimaryActivity.Id, LiveActivityActionKind.OpenSourceApp);
+
+    public bool ShowDismissControl => PrimaryActivity is not null && !ShowMediaTransportControls;
 
     public bool IsExpansionUp
     {
@@ -207,6 +258,42 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             if (value)
             {
                 SetExpansionDirection(IslandExpansionDirection.Down);
+            }
+        }
+    }
+
+    public bool IsIslandSizeSmall
+    {
+        get => _settings.IslandSize == IslandSizePreset.Small;
+        set
+        {
+            if (value)
+            {
+                SetIslandSize(IslandSizePreset.Small);
+            }
+        }
+    }
+
+    public bool IsIslandSizeMedium
+    {
+        get => _settings.IslandSize == IslandSizePreset.Medium;
+        set
+        {
+            if (value)
+            {
+                SetIslandSize(IslandSizePreset.Medium);
+            }
+        }
+    }
+
+    public bool IsIslandSizeLarge
+    {
+        get => _settings.IslandSize == IslandSizePreset.Large;
+        set
+        {
+            if (value)
+            {
+                SetIslandSize(IslandSizePreset.Large);
             }
         }
     }
@@ -336,6 +423,14 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public ICommand RegenerateTokenCommand { get; }
 
+    public ICommand StartDemoDownloadCommand { get; }
+
+    public ICommand StartDemoEncodeCommand { get; }
+
+    public ICommand StartDemoTimerCommand { get; }
+
+    public ICommand StopDemoActivityCommand { get; }
+
     public void Dispose()
     {
         if (_isDisposed)
@@ -345,6 +440,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         _heartbeatTimer.Stop();
         _heartbeatTimer.Tick -= OnHeartbeat;
+        _demoActivityTimer.Stop();
+        _demoActivityTimer.Tick -= OnDemoActivityTick;
         _activityStore.ActivitiesChanged -= OnActivitiesChanged;
         _trayCommandService.OpenSettingsRequested -= OnOpenSettingsRequested;
         _trayCommandService.ResetPositionRequested -= OnResetPositionRequested;
@@ -554,6 +651,133 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         RefreshWindowBounds();
     }
 
+    private void SetIslandSize(IslandSizePreset size)
+    {
+        if (_settings.IslandSize == size)
+        {
+            return;
+        }
+
+        _settings.IslandSize = size;
+        NotifyIslandSizeChanged();
+        RefreshWindowBounds();
+    }
+
+    private void NotifyIslandSizeChanged()
+    {
+        OnPropertyChanged(nameof(IsIslandSizeSmall));
+        OnPropertyChanged(nameof(IsIslandSizeMedium));
+        OnPropertyChanged(nameof(IsIslandSizeLarge));
+        OnPropertyChanged(nameof(CompactWidth));
+        OnPropertyChanged(nameof(CompactHeight));
+        OnPropertyChanged(nameof(IslandTileHeight));
+        OnPropertyChanged(nameof(IslandTileCornerRadius));
+        OnPropertyChanged(nameof(IslandTilePadding));
+        OnPropertyChanged(nameof(ActivityIconSize));
+        OnPropertyChanged(nameof(ActivityIconCornerRadius));
+        OnPropertyChanged(nameof(ActivityTitleFontSize));
+        OnPropertyChanged(nameof(ActivitySubtitleFontSize));
+        OnPropertyChanged(nameof(ActivityTypeFontSize));
+    }
+
+    private IslandSizeMetrics CurrentMetrics => _settings.IslandSize switch
+    {
+        IslandSizePreset.Small => SmallMetrics,
+        IslandSizePreset.Large => LargeMetrics,
+        _ => MediumMetrics
+    };
+
+    private void StartDemoActivity(LiveActivityType type)
+    {
+        StopDemoActivity();
+
+        _demoActivityType = type;
+        _demoActivityId = $"demo:{type.ToString().ToLowerInvariant()}";
+        _demoActivityStartedAt = DateTimeOffset.UtcNow;
+        _demoActivityDuration = type == LiveActivityType.Timer
+            ? TimeSpan.FromSeconds(30)
+            : TimeSpan.FromSeconds(18);
+
+        UpsertDemoActivity(0);
+        _demoActivityTimer.Start();
+        RaiseCommandCanExecuteChanged();
+        SettingsStatus = "デモ activity を開始しました。島で音楽以外の進行状況を確認できます。";
+    }
+
+    private void StopDemoActivity()
+    {
+        if (_demoActivityId is null)
+        {
+            return;
+        }
+
+        _demoActivityTimer.Stop();
+        _activityStore.Remove(_demoActivityId, LiveActivityEndReason.Deleted);
+        _demoActivityId = null;
+        RaiseCommandCanExecuteChanged();
+    }
+
+    private void OnDemoActivityTick(object? sender, EventArgs e)
+    {
+        if (_demoActivityId is null)
+        {
+            return;
+        }
+
+        var elapsed = DateTimeOffset.UtcNow - _demoActivityStartedAt;
+        var progress = Math.Clamp(elapsed.TotalSeconds / _demoActivityDuration.TotalSeconds, 0d, 1d);
+        UpsertDemoActivity(progress);
+
+        if (progress >= 1)
+        {
+            _demoActivityTimer.Stop();
+            _demoActivityId = null;
+            RaiseCommandCanExecuteChanged();
+        }
+    }
+
+    private void UpsertDemoActivity(double progress)
+    {
+        if (_demoActivityId is null)
+        {
+            return;
+        }
+
+        var isDone = progress >= 1;
+        var percent = Math.Round(progress * 100);
+        var (title, subtitle) = _demoActivityType switch
+        {
+            LiveActivityType.Encode => (
+                isDone ? "Demo encode complete" : "Demo encode",
+                isDone ? "Ready to review" : $"{percent:0}% rendered"),
+            LiveActivityType.Timer => (
+                isDone ? "Demo timer finished" : "Demo timer",
+                isDone ? "Done" : $"{Math.Max(0, (_demoActivityDuration - (DateTimeOffset.UtcNow - _demoActivityStartedAt)).TotalSeconds):0}s left"),
+            _ => (
+                isDone ? "Demo download complete" : "Demo download",
+                isDone ? "Saved locally" : $"{percent:0}% downloaded")
+        };
+
+        _activityStore.Upsert(new LiveActivity
+        {
+            Id = _demoActivityId,
+            Type = _demoActivityType,
+            State = isDone ? LiveActivityState.Completed : LiveActivityState.Active,
+            Title = title,
+            Subtitle = subtitle,
+            Progress = progress,
+            Priority = 60,
+            SourceApp = new LiveActivitySourceApp
+            {
+                Name = "WinLive demo"
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["demo"] = "settingsWindow"
+            }
+        });
+    }
+
     private async Task SaveSettingsAsync(CancellationToken cancellationToken)
     {
         _settings.Normalize();
@@ -597,7 +821,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             OpenSourceAppCommand,
             DismissPrimaryCommand,
             ResetPositionCommand,
-            SaveSettingsCommand
+            SaveSettingsCommand,
+            StopDemoActivityCommand
         }.OfType<IRaiseCanExecuteChanged>())
         {
             command.RaiseCanExecuteChanged();
@@ -625,4 +850,15 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         _synchronizationContext.Post(_ => action(), null);
     }
+
+    private sealed record IslandSizeMetrics(
+        double Width,
+        double Height,
+        double CornerRadius,
+        double Padding,
+        double IconSize,
+        double IconCornerRadius,
+        double TitleFontSize,
+        double SubtitleFontSize,
+        double TypeFontSize);
 }

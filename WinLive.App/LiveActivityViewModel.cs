@@ -35,6 +35,9 @@ public sealed class LiveActivityViewModel
         LiveActivityType.Upload => "UP",
         LiveActivityType.Encode => "ENC",
         LiveActivityType.FileCopy => "COPY",
+        LiveActivityType.Timer => "TIME",
+        LiveActivityType.Install => "INST",
+        LiveActivityType.GenericProgress => "PROG",
         LiveActivityType.Experimental => "BETA",
         _ => "LIVE"
     };

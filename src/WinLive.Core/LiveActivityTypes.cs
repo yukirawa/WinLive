@@ -8,6 +8,7 @@ public enum LiveActivityType
     Encode,
     FileCopy,
     Timer,
+    Install,
     GenericProgress,
     Experimental,
     Custom
@@ -48,4 +49,11 @@ public enum ThemePreference
     System,
     Light,
     Dark
+}
+
+public enum IslandSizePreset
+{
+    Medium,
+    Small,
+    Large
 }

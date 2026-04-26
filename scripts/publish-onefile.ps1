@@ -4,7 +4,7 @@ param(
 
     [switch] $FrameworkDependent,
 
-    [string] $Version = "1.0.1"
+    [string] $Version = "1.2.0"
 )
 
 $ErrorActionPreference = "Stop"

@@ -23,19 +23,19 @@
         Width="{Binding WindowWidth, Mode=OneWay, FallbackValue=374, TargetNullValue=374}"
         Height="{Binding WindowHeight, Mode=OneWay, FallbackValue=56, TargetNullValue=56}"
         MinWidth="320"
-        MinHeight="56"
-        MaxWidth="420"
-        MaxHeight="280"
+        MinHeight="50"
+        MaxWidth="460"
+        MaxHeight="330"
         IsHitTestVisible="{Binding IsIslandVisible, Mode=OneWay, FallbackValue=True}">
     <Window.Resources>
         <Style x:Key="IslandTileStyle" TargetType="Border">
             <Setter Property="Width" Value="{Binding DataContext.WindowWidth, RelativeSource={RelativeSource AncestorType=Window}}" />
-            <Setter Property="Height" Value="56" />
+            <Setter Property="Height" Value="{Binding DataContext.IslandTileHeight, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="Background" Value="#E612171D" />
             <Setter Property="BorderBrush" Value="#36FFFFFF" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="22" />
-            <Setter Property="Padding" Value="9" />
+            <Setter Property="CornerRadius" Value="{Binding DataContext.IslandTileCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="Padding" Value="{Binding DataContext.IslandTilePadding, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
             <Setter Property="Effect">
                 <Setter.Value>
@@ -73,15 +73,15 @@
         </Style>
 
         <DataTemplate x:Key="ActivityTileTemplate">
-            <Grid ColumnDefinitions="38,*,Auto" VerticalAlignment="Center">
-                <Border Width="32"
-                        Height="32"
-                        CornerRadius="12"
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <Border Width="{Binding DataContext.ActivityIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                        Height="{Binding DataContext.ActivityIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CornerRadius="{Binding DataContext.ActivityIconCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}"
                         Background="#24FFFFFF"
                         VerticalAlignment="Center">
                     <TextBlock Text="{Binding TypeLabel}"
                                Foreground="#DFFFFFFF"
-                               FontSize="9"
+                               FontSize="{Binding DataContext.ActivityTypeFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center" />
@@ -95,13 +95,13 @@
                     </Grid.RowDefinitions>
                     <TextBlock Text="{Binding Title}"
                                Foreground="#F7FFFFFF"
-                               FontSize="13"
+                               FontSize="{Binding DataContext.ActivityTitleFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Grid.Row="1"
                                Text="{Binding Subtitle}"
                                Foreground="#B8FFFFFF"
-                               FontSize="11"
+                               FontSize="{Binding DataContext.ActivitySubtitleFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                Margin="0,1,0,0"
                                TextTrimming="CharacterEllipsis" />
                     <ProgressBar Grid.Row="2"
@@ -114,7 +114,7 @@
                 <TextBlock Grid.Column="2"
                            Text="{Binding StateLabel}"
                            Foreground="#90FFFFFF"
-                           FontSize="10"
+                           FontSize="{Binding DataContext.ActivityTypeFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
                            VerticalAlignment="Center" />
             </Grid>
         </DataTemplate>
@@ -184,19 +184,21 @@
             </ItemsControl>
 
             <Border Style="{StaticResource IslandTileStyle}">
-                <Grid ColumnDefinitions="38,*,Auto" VerticalAlignment="Center">
-                    <Grid Width="34" Height="34" VerticalAlignment="Center">
-                        <Border CornerRadius="12"
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                    <Grid Width="{Binding ActivityIconSize}"
+                          Height="{Binding ActivityIconSize}"
+                          VerticalAlignment="Center">
+                        <Border CornerRadius="{Binding ActivityIconCornerRadius}"
                                 Background="#2BFFFFFF"
                                 Visibility="{Binding PrimaryActivity.AlbumArtSource, Converter={StaticResource NullToInverseVisibilityConverter}}">
                             <TextBlock Text="{Binding PrimaryActivity.TypeLabel}"
                                        Foreground="#DFFFFFFF"
-                                       FontSize="9"
+                                       FontSize="{Binding ActivityTypeFontSize}"
                                        FontWeight="SemiBold"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
                         </Border>
-                        <Border CornerRadius="12"
+                        <Border CornerRadius="{Binding ActivityIconCornerRadius}"
                                 ClipToBounds="True"
                                 Visibility="{Binding PrimaryActivity.AlbumArtSource, Converter={StaticResource NullToVisibilityConverter}}">
                             <Image Source="{Binding PrimaryActivity.AlbumArtSource}"
@@ -212,13 +214,13 @@
                         </Grid.RowDefinitions>
                         <TextBlock Text="{Binding PrimaryActivity.Title}"
                                    Foreground="#F7FFFFFF"
-                                   FontSize="13"
+                                   FontSize="{Binding ActivityTitleFontSize}"
                                    FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Grid.Row="1"
                                    Text="{Binding PrimaryActivity.Subtitle}"
                                    Foreground="#B8FFFFFF"
-                                   FontSize="11"
+                                   FontSize="{Binding ActivitySubtitleFontSize}"
                                    Margin="0,1,0,0"
                                    TextTrimming="CharacterEllipsis" />
                         <ProgressBar Grid.Row="2"
@@ -235,18 +237,31 @@
                                 Content="&#xE100;"
                                 Command="{Binding PreviousCommand}"
                                 ToolTip="Previous"
-                                Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                Visibility="{Binding ShowPreviousNextControls, Converter={StaticResource BoolToVisibilityConverter}}" />
                         <Button Style="{StaticResource IconButtonStyle}"
                                 Content="{Binding PlayPauseGlyph}"
                                 Command="{Binding PlayPauseCommand}"
                                 ToolTip="Play / pause"
-                                Margin="6,0,0,0" />
+                                Margin="6,0,0,0"
+                                Visibility="{Binding ShowMediaTransportControls, Converter={StaticResource BoolToVisibilityConverter}}" />
                         <Button Style="{StaticResource IconButtonStyle}"
                                 Content="&#xE101;"
                                 Command="{Binding NextCommand}"
                                 ToolTip="Next"
                                 Margin="6,0,0,0"
-                                Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                Visibility="{Binding ShowPreviousNextControls, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <Button Style="{StaticResource IconButtonStyle}"
+                                Content="&#xE8A7;"
+                                Command="{Binding OpenSourceAppCommand}"
+                                ToolTip="Open source"
+                                Margin="6,0,0,0"
+                                Visibility="{Binding ShowOpenSourceAppControl, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <Button Style="{StaticResource IconButtonStyle}"
+                                Content="&#xE711;"
+                                Command="{Binding DismissPrimaryCommand}"
+                                ToolTip="Dismiss"
+                                Margin="6,0,0,0"
+                                Visibility="{Binding ShowDismissControl, Converter={StaticResource BoolToVisibilityConverter}}" />
                         <Button Style="{StaticResource IconButtonStyle}"
                                 Content="{Binding ExpandGlyph}"
                                 Command="{Binding ToggleExpandCommand}"

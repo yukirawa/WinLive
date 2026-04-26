@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="WinLive 設定"
-        Width="520"
-        Height="470"
+        Width="580"
+        Height="620"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         Background="#F5F7FA">
@@ -19,7 +19,10 @@
                    FontWeight="SemiBold"
                    Foreground="#12171D" />
 
-        <StackPanel Grid.Row="1" Margin="0,20,0,0">
+        <ScrollViewer Grid.Row="1"
+                      Margin="0,20,0,0"
+                      VerticalScrollBarVisibility="Auto">
+        <StackPanel>
             <CheckBox Content="全画面中は非表示"
                       IsChecked="{Binding HideDuringFullScreen}"
                       Margin="0,0,0,12" />
@@ -29,6 +32,22 @@
             <CheckBox Content="アルバムアートを表示"
                       IsChecked="{Binding ShowAlbumArt}"
                       Margin="0,0,0,12" />
+            <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
+                <TextBlock Text="島サイズ"
+                           VerticalAlignment="Center"
+                           Foreground="#3F4A56" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal">
+                    <RadioButton Content="Small"
+                                 IsChecked="{Binding IsIslandSizeSmall}"
+                                 Margin="0,0,18,0" />
+                    <RadioButton Content="Medium"
+                                 IsChecked="{Binding IsIslandSizeMedium}"
+                                 Margin="0,0,18,0" />
+                    <RadioButton Content="Large"
+                                 IsChecked="{Binding IsIslandSizeLarge}" />
+                </StackPanel>
+            </Grid>
             <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
                 <TextBlock Text="展開方向"
                            VerticalAlignment="Center"
@@ -76,6 +95,29 @@
             <CheckBox Content="実験的な進行状況検出"
                       IsChecked="{Binding ExperimentalProgressEnabled}"
                       Margin="0,8,0,12" />
+            <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
+                <TextBlock Text="デモ activity"
+                           VerticalAlignment="Center"
+                           Foreground="#3F4A56" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal">
+                    <Button Content="Download"
+                            Command="{Binding StartDemoDownloadCommand}"
+                            Padding="10,5"
+                            Margin="0,0,8,0" />
+                    <Button Content="Encode"
+                            Command="{Binding StartDemoEncodeCommand}"
+                            Padding="10,5"
+                            Margin="0,0,8,0" />
+                    <Button Content="Timer"
+                            Command="{Binding StartDemoTimerCommand}"
+                            Padding="10,5"
+                            Margin="0,0,8,0" />
+                    <Button Content="停止"
+                            Command="{Binding StopDemoActivityCommand}"
+                            Padding="10,5" />
+                </StackPanel>
+            </Grid>
             <Grid ColumnDefinitions="120,*">
                 <TextBlock Text="設定ファイル"
                            VerticalAlignment="Center"
@@ -89,6 +131,7 @@
                        Margin="0,16,0,0"
                        TextWrapping="Wrap" />
         </StackPanel>
+        </ScrollViewer>
 
         <StackPanel Grid.Row="2"
                     Orientation="Horizontal"

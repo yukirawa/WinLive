@@ -82,6 +82,36 @@ public sealed class LocalApiServerTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("download", LiveActivityType.Download)]
+    [InlineData("upload", LiveActivityType.Upload)]
+    [InlineData("encode", LiveActivityType.Encode)]
+    [InlineData("fileCopy", LiveActivityType.FileCopy)]
+    [InlineData("timer", LiveActivityType.Timer)]
+    [InlineData("install", LiveActivityType.Install)]
+    [InlineData("genericProgress", LiveActivityType.GenericProgress)]
+    public async Task PutAcceptsNonMediaActivityTypes(string type, LiveActivityType expected)
+    {
+        var store = new LiveActivityStore();
+        var settings = SettingsWithApiEnabled();
+        await using var server = new WinLiveLocalApiServer(store, settings);
+        await server.StartAsync();
+        using var client = AuthorizedClient(server.BaseAddress!, settings.ExternalApi.AuthToken);
+        var id = $"demo-{type}";
+
+        using var put = await client.PutAsJsonAsync($"/api/v1/activities/{id}", new
+        {
+            type,
+            title = $"Demo {type}",
+            state = "active",
+            progress = 0.25
+        });
+
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        Assert.True(store.TryGetActivity(id, out var activity));
+        Assert.Equal(expected, activity.Type);
+    }
+
     private static WinLiveSettings SettingsWithApiEnabled()
     {
         return new WinLiveSettings

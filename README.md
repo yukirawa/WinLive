@@ -9,9 +9,12 @@ WinLive は、Windows 11 向けのライブ通知アプリです。
 
 - 再生中のメディアを小さな島に表示
 - 再生 / 一時停止、前後トラックの操作
-- 進捗つきのライブ通知を表示
+- localhost API から進捗つきのライブ通知を表示
+- ダウンロード、アップロード、エンコード、コピー、タイマー、インストールなどの継続更新を表示
+- 実験的な自動進捗検出で、既存アプリの ProgressBar を島に表示
 - 島をクリックして展開
 - Aqua Dynamics 風に、同じ大きさのタイルが上または下へ展開
+- 島の大きさを Small / Medium / Large から選択
 - 島をドラッグして好きな位置へ移動
 - トレイアイコンから設定、位置リセット、終了
 - 全画面動画やゲーム中は自動で非表示
@@ -26,6 +29,12 @@ WinLive は、Windows 11 向けのライブ通知アプリです。
 
 島が邪魔になった場合は、タスクトレイの WinLive アイコンから `Reset position` を選ぶと初期位置に戻せます。
 
+API の動作確認にはデモクライアントを使えます。
+
+```powershell
+dotnet run --project tools/WinLive.ApiDemo -- --token "<settings window token>" --scenario all
+```
+
 ## 設定
 
 タスクトレイの WinLive アイコンから設定を開けます。
@@ -35,9 +44,11 @@ WinLive は、Windows 11 向けのライブ通知アプリです。
 - 全画面中に非表示にする
 - 一時停止中のメディアも表示する
 - アルバムアートを表示する
+- 島サイズを `Small` / `Medium` / `Large` から選ぶ
 - 島の展開方向を `Up` / `Down` から選ぶ
 - localhost API の有効化
 - API トークンの確認と再生成
+- デモ activity の送信
 - 実験的な進捗検出の有効化
 
 設定変更の一部は、WinLive の再起動後に反映されます。
@@ -51,6 +62,7 @@ WinLive は、Windows 11 向けのライブ通知アプリです。
 ```text
 WinLive_v1.0.0.exe
 WinLive_v1.0.1.exe
+WinLive_v1.2.0.exe
 ```
 
 ## 注意点

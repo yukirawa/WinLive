@@ -138,6 +138,66 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void IslandSizePresetControlsCompactBounds()
+    {
+        using var tray = new FakeTrayCommandService();
+        var settings = new WinLiveSettings
+        {
+            IslandSize = IslandSizePreset.Small
+        };
+        var viewModel = new WinLiveShellViewModel(
+            new LiveActivityStore(),
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(settings),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            settings);
+
+        Assert.True(viewModel.IsIslandSizeSmall);
+        Assert.Equal(320, viewModel.WindowWidth);
+        Assert.Equal(50, viewModel.WindowHeight);
+
+        viewModel.IsIslandSizeLarge = true;
+
+        Assert.True(viewModel.IsIslandSizeLarge);
+        Assert.Equal(IslandSizePreset.Large, settings.IslandSize);
+        Assert.Equal(430, viewModel.WindowWidth);
+        Assert.Equal(66, viewModel.WindowHeight);
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void NonMediaPrimaryUsesContextualControls()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        store.Upsert(new LiveActivity
+        {
+            Id = "download",
+            Type = LiveActivityType.Download,
+            Title = "Download",
+            State = LiveActivityState.Active,
+            Progress = 0.5
+        });
+
+        Assert.False(viewModel.ShowMediaTransportControls);
+        Assert.False(viewModel.ShowPreviousNextControls);
+        Assert.True(viewModel.ShowDismissControl);
+        Assert.False(viewModel.PlayPauseCommand.CanExecute(null));
+        viewModel.Dispose();
+    }
+
+    [Fact]
     public void AddingSecondActivityKeepsPrimaryAndAutoExpands()
     {
         using var tray = new FakeTrayCommandService();

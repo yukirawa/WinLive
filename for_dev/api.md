@@ -56,10 +56,42 @@ Invoke-RestMethod `
 dotnet run --project tools/WinLive.ApiDemo -- --token "<settings window token>"
 ```
 
+シナリオを指定できます。
+
+```powershell
+dotnet run --project tools/WinLive.ApiDemo -- --token "<token>" --scenario download
+dotnet run --project tools/WinLive.ApiDemo -- --token "<token>" --scenario encode
+dotnet run --project tools/WinLive.ApiDemo -- --token "<token>" --scenario all
+```
+
+対応シナリオ:
+
+- `download`
+- `upload`
+- `encode`
+- `copy`
+- `timer`
+- `install`
+- `all`
+
+継続的な更新は、同じ `id` に対して最初に `PUT`、以後に `PATCH` を送る形を推奨します。
+
+```powershell
+Invoke-RestMethod `
+  -Method Patch `
+  -Uri "http://127.0.0.1:8765/api/v1/activities/demo-download" `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body '{
+    "subtitle": "75%",
+    "progress": 0.75
+  }'
+```
+
 ## LiveActivity の主な項目
 
 - `id`: activity の一意 ID
-- `type`: `media`, `download`, `upload`, `encode`, `install`, `experimental` など
+- `type`: `media`, `download`, `upload`, `encode`, `fileCopy`, `timer`, `install`, `genericProgress`, `experimental` など
 - `state`: `active`, `paused`, `completed`, `error` など
 - `title`: 1 行目の表示文字列
 - `subtitle`: 2 行目の表示文字列
@@ -68,4 +100,3 @@ dotnet run --project tools/WinLive.ApiDemo -- --token "<settings window token>"
 - `sourceApp`: 送信元アプリ情報
 - `media`: メディア用の追加情報
 - `metadata`: 任意のキー/値
-

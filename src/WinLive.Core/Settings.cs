@@ -14,6 +14,8 @@ public sealed class WinLiveSettings
 
     public ThemePreference Theme { get; set; } = ThemePreference.System;
 
+    public IslandSizePreset IslandSize { get; set; } = IslandSizePreset.Medium;
+
     public bool HasCustomIslandPosition { get; set; }
 
     public IslandBounds IslandBounds { get; set; } = IslandBounds.Default;
@@ -29,6 +31,11 @@ public sealed class WinLiveSettings
         if (IslandBounds.Width <= 0 || IslandBounds.Height <= 0)
         {
             IslandBounds = IslandBounds.Default;
+        }
+
+        if (!Enum.IsDefined(IslandSize))
+        {
+            IslandSize = IslandSizePreset.Medium;
         }
 
         ExternalApi ??= new ExternalApiSettings();
