@@ -1,116 +1,74 @@
 # WinLive
 
-WinLive is a Windows 11 Live Activity prototype: a small Fluent-style island that appears above the notification area when there is useful ongoing information.
+WinLive は、Windows 11 向けのライブ通知アプリです。
+音楽再生、ダウンロード、エンコードなど、いま進行中の情報を小さな「島」として表示します。
 
-## MVP Features
+スマートフォンの Dynamic Island / Hyper Island / Aqua Dynamics の考え方を参考にしつつ、PC の通知領域やタスクバーに合うように作っています。
 
-- WPF transparent island, always-on-top and hidden from the taskbar.
-- Aqua Dynamics-style expansion with same-size tiles that can unfold upward or downward.
-- Media activity source through Windows Global System Media Transport Controls.
-- Localhost JSON API for supported tools and apps to publish progress.
-- Experimental UI Automation progress detector, disabled by default.
-- Tray menu with settings, reset position, and exit.
-- Drag the island itself to move it; use the tray reset command to return it near the notification area.
-- Full-screen suppression for games and videos.
-- Short startup hint so a successful launch is visible even when no activity is active.
+## できること
 
-## Build
+- 再生中のメディアを小さな島に表示
+- 再生 / 一時停止、前後トラックの操作
+- 進捗つきのライブ通知を表示
+- 島をクリックして展開
+- Aqua Dynamics 風に、同じ大きさのタイルが上または下へ展開
+- 島をドラッグして好きな位置へ移動
+- トレイアイコンから設定、位置リセット、終了
+- 全画面動画やゲーム中は自動で非表示
 
-```powershell
-dotnet build WinLive.slnx
-dotnet test WinLive.slnx
-dotnet run --project WinLive.App
+## 使い方
+
+1. `WinLive_v1.0.0.exe` のような WinLive の exe を起動します。
+2. タスクトレイに WinLive のアイコンが表示されます。
+3. 音楽を再生したり、対応する進捗通知が入ると島が表示されます。
+4. 島をクリックすると展開します。
+5. 島本体をドラッグすると位置を変更できます。
+
+島が邪魔になった場合は、タスクトレイの WinLive アイコンから `Reset position` を選ぶと初期位置に戻せます。
+
+## 設定
+
+タスクトレイの WinLive アイコンから設定を開けます。
+
+主な設定:
+
+- 全画面中に非表示にする
+- 一時停止中のメディアも表示する
+- アルバムアートを表示する
+- 島の展開方向を `Up` / `Down` から選ぶ
+- localhost API の有効化
+- API トークンの確認と再生成
+- 実験的な進捗検出の有効化
+
+設定変更の一部は、WinLive の再起動後に反映されます。
+
+## 配布ファイル名
+
+リリース用 exe は、バージョンが分かる名前にできます。
+
+例:
+
+```text
+WinLive_v1.0.0.exe
+WinLive_v1.0.1.exe
 ```
 
-WinLive targets .NET SDK `10.0.202` and Windows 11 first.
+## 注意点
 
-## Publish
+- WinLive は Windows 11 優先で作っています。
+- 署名していないベータ版では、Windows SmartScreen の警告が出る場合があります。
+- すべてのアプリのタスクバー進捗を読み取れるわけではありません。
+- 実験的な進捗検出は、アプリによって検出できない場合があります。
+- 表示する情報がないとき、島は非表示になり、タスクトレイにだけ常駐します。
 
-WPF apps can be published the same way as other .NET desktop apps. For a single executable that also carries the .NET runtime:
+## 開発者向け情報
 
-```powershell
-.\scripts\publish-onefile.ps1
-```
+ビルド方法、API 仕様、内部構成、テスト、既知の制限は `for_dev` フォルダに分けてあります。
 
-The output is written to `artifacts\publish\win-x64\WinLive_v1.0.0.exe`.
-
-To publish a different versioned filename:
-
-```powershell
-.\scripts\publish-onefile.ps1 -Version 1.0.1
-```
-
-That creates `WinLive_v1.0.1.exe`.
-
-For a smaller executable that requires the target PC to have the .NET 10 Desktop Runtime installed:
-
-```powershell
-.\scripts\publish-onefile.ps1 -FrameworkDependent
-```
-
-Equivalent manual command:
-
-```powershell
-dotnet publish WinLive.App\WinLive.App.csproj `
-  -c Release `
-  -r win-x64 `
-  --self-contained true `
-  -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:EnableCompressionInSingleFile=true `
-  -p:DebugType=None `
-  -p:DebugSymbols=false
-```
-
-Diagnostics logging is disabled by default for v1 performance. To collect startup/window logs:
-
-```powershell
-$env:WINLIVE_DIAGNOSTICS = "1"
-dotnet run --project WinLive.App
-```
-
-## Local API
-
-The API listens on `http://127.0.0.1:8765` by default. The bearer token is generated on first launch and is visible in the settings window.
-
-```powershell
-$token = "<token from settings>"
-$headers = @{ Authorization = "Bearer $token" }
-
-Invoke-RestMethod `
-  -Method Put `
-  -Uri "http://127.0.0.1:8765/api/v1/activities/demo-download" `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body '{
-    "type": "download",
-    "state": "active",
-    "title": "Demo download",
-    "subtitle": "42%",
-    "progress": 0.42,
-    "priority": 40,
-    "sourceApp": { "name": "PowerShell" }
-  }'
-```
-
-Endpoints:
-
-- `GET /api/v1/health`
-- `GET /api/v1/activities`
-- `PUT /api/v1/activities/{id}`
-- `PATCH /api/v1/activities/{id}`
-- `DELETE /api/v1/activities/{id}`
-
-You can also run the demo client:
-
-```powershell
-dotnet run --project tools/WinLive.ApiDemo -- --token "<token from settings>"
-```
-
-## Known Limits
-
-- Existing taskbar progress from arbitrary apps is not generally readable through a public Windows API.
-- UI Automation progress detection is best-effort, opt-in, and may miss apps or create noisy beta activities.
-- API server, port, token, and experimental detector changes are saved immediately but require restarting WinLive to fully apply.
-- Initial placement is tuned for a bottom Windows 11 taskbar and notification-area-adjacent display.
-- When there is no media or progress, WinLive intentionally hides the island and remains in the tray.
+- [開発者向け目次](for_dev/README.md)
+- [ビルドとリリース](for_dev/build-release.md)
+- [API 仕様](for_dev/api.md)
+- [内部構成](for_dev/architecture.md)
+- [UI と挙動](for_dev/ui-behavior.md)
+- [テスト](for_dev/testing.md)
+- [既知の制限](for_dev/known-limits.md)
