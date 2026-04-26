@@ -1,7 +1,7 @@
 <Window x:Class="WinLive.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinLive Settings"
+        Title="WinLive 設定"
         Width="520"
         Height="470"
         ResizeMode="NoResize"
@@ -20,33 +20,33 @@
                    Foreground="#12171D" />
 
         <StackPanel Grid.Row="1" Margin="0,20,0,0">
-            <CheckBox Content="Hide during full screen"
+            <CheckBox Content="全画面中は非表示"
                       IsChecked="{Binding HideDuringFullScreen}"
                       Margin="0,0,0,12" />
-            <CheckBox Content="Show paused media"
+            <CheckBox Content="一時停止中のメディアを表示"
                       IsChecked="{Binding ShowPausedMedia}"
                       Margin="0,0,0,12" />
-            <CheckBox Content="Show album art"
+            <CheckBox Content="アルバムアートを表示"
                       IsChecked="{Binding ShowAlbumArt}"
                       Margin="0,0,0,12" />
             <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
-                <TextBlock Text="Expand"
+                <TextBlock Text="展開方向"
                            VerticalAlignment="Center"
                            Foreground="#3F4A56" />
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal">
-                    <RadioButton Content="Up"
+                    <RadioButton Content="上"
                                  IsChecked="{Binding IsExpansionUp}"
                                  Margin="0,0,18,0" />
-                    <RadioButton Content="Down"
+                    <RadioButton Content="下"
                                  IsChecked="{Binding IsExpansionDown}" />
                 </StackPanel>
             </Grid>
-            <CheckBox Content="Enable localhost API"
+            <CheckBox Content="localhost API を有効化"
                       IsChecked="{Binding ExternalApiEnabled}"
                       Margin="0,8,0,12" />
             <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
-                <TextBlock Text="API address"
+                <TextBlock Text="API アドレス"
                            VerticalAlignment="Center"
                            Foreground="#3F4A56" />
                 <TextBox Grid.Column="1"
@@ -54,30 +54,30 @@
                          IsReadOnly="True" />
             </Grid>
             <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
-                <TextBlock Text="API port"
+                <TextBlock Text="API ポート"
                            VerticalAlignment="Center"
                            Foreground="#3F4A56" />
                 <TextBox Grid.Column="1"
                          Text="{Binding ApiPort, UpdateSourceTrigger=PropertyChanged}" />
             </Grid>
             <Grid ColumnDefinitions="120,*,Auto" Margin="0,0,0,12">
-                <TextBlock Text="Token"
+                <TextBlock Text="トークン"
                            VerticalAlignment="Center"
                            Foreground="#3F4A56" />
                 <TextBox Grid.Column="1"
                          Text="{Binding ApiToken, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="True" />
                 <Button Grid.Column="2"
-                        Content="Regenerate"
+                        Content="再生成"
                         Command="{Binding RegenerateTokenCommand}"
                         Margin="8,0,0,0"
                         Padding="12,5" />
             </Grid>
-            <CheckBox Content="Experimental progress detection"
+            <CheckBox Content="実験的な進行状況検出"
                       IsChecked="{Binding ExperimentalProgressEnabled}"
                       Margin="0,8,0,12" />
             <Grid ColumnDefinitions="120,*">
-                <TextBlock Text="Settings file"
+                <TextBlock Text="設定ファイル"
                            VerticalAlignment="Center"
                            Foreground="#3F4A56" />
                 <TextBox Grid.Column="1"
@@ -93,11 +93,11 @@
         <StackPanel Grid.Row="2"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right">
-            <Button Content="Reset position"
+            <Button Content="位置をリセット"
                     Command="{Binding ResetPositionCommand}"
                     Padding="12,6"
                     Margin="0,0,8,0" />
-            <Button Content="Save"
+            <Button Content="保存"
                     Command="{Binding SaveSettingsCommand}"
                     Padding="18,6"
                     IsDefault="True" />

@@ -22,6 +22,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     private readonly DispatcherTimer _heartbeatTimer;
     private WinLiveSettings _settings;
     private LiveActivityViewModel? _primaryActivity;
+    private string? _selectedActivityId;
     private bool _isExpanded;
     private bool _isFullScreenSuppressed;
     private bool? _lastLoggedSuppression;
@@ -53,6 +54,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         Activities = new ObservableCollection<LiveActivityViewModel>();
         SecondaryActivities = new ObservableCollection<LiveActivityViewModel>();
         ToggleExpandCommand = new RelayCommand(() => IsExpanded = !IsExpanded, () => PrimaryActivity is not null);
+        SelectActivityCommand = new RelayCommand(SelectActivity, CanSelectActivity);
         PlayPauseCommand = new AsyncRelayCommand(
             (_, token) => ExecutePrimaryActionAsync(LiveActivityActionKind.PlayPause, token),
             _ => CanExecutePrimaryAction(LiveActivityActionKind.PlayPause));
@@ -314,6 +316,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public ICommand ToggleExpandCommand { get; }
 
+    public ICommand SelectActivityCommand { get; }
+
     public ICommand PlayPauseCommand { get; }
 
     public ICommand PreviousCommand { get; }
@@ -356,15 +360,26 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     private void RefreshFromStore()
     {
         var visibleActivities = _activityStore.VisibleActivities.ToList();
+        var previousVisibleCount = Activities.Count;
         Activities.Clear();
         foreach (var activity in visibleActivities)
         {
             Activities.Add(new LiveActivityViewModel(activity));
         }
 
-        PrimaryActivity = _activityStore.PrimaryActivity is null
-            ? null
-            : new LiveActivityViewModel(_activityStore.PrimaryActivity);
+        if (visibleActivities.Count == 0)
+        {
+            _selectedActivityId = null;
+            PrimaryActivity = null;
+        }
+        else
+        {
+            var selectedActivity = visibleActivities.FirstOrDefault(activity => activity.Id == _selectedActivityId) ??
+                _activityStore.PrimaryActivity ??
+                visibleActivities[0];
+            _selectedActivityId = selectedActivity.Id;
+            PrimaryActivity = new LiveActivityViewModel(selectedActivity);
+        }
 
         SecondaryActivities.Clear();
         foreach (var activity in visibleActivities
@@ -377,6 +392,10 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         if (PrimaryActivity is null)
         {
             IsExpanded = false;
+        }
+        else if (previousVisibleCount <= 1 && visibleActivities.Count > 1)
+        {
+            IsExpanded = true;
         }
 
         OnPropertyChanged(nameof(HasSecondaryActivities));
@@ -477,6 +496,25 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    private bool CanSelectActivity(object? parameter)
+    {
+        var id = GetActivityIdParameter(parameter);
+        return id is not null &&
+            Activities.Any(activity => activity.Id == id);
+    }
+
+    private void SelectActivity(object? parameter)
+    {
+        var id = GetActivityIdParameter(parameter);
+        if (id is null || id == _selectedActivityId || !Activities.Any(activity => activity.Id == id))
+        {
+            return;
+        }
+
+        _selectedActivityId = id;
+        RefreshFromStore();
+    }
+
     private async Task ResetPositionAsync(CancellationToken cancellationToken)
     {
         _settings.HasCustomIslandPosition = false;
@@ -523,13 +561,13 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ApiToken));
         OnPropertyChanged(nameof(ApiPort));
         OnPropertyChanged(nameof(ApiBaseAddress));
-        SettingsStatus = "Saved. Restart WinLive to apply API server or experimental detector changes.";
+        SettingsStatus = "保存しました。API サーバーまたは実験的検出の変更を反映するには WinLive を再起動してください。";
     }
 
     private void RegenerateToken()
     {
         ApiToken = TokenGenerator.CreateToken();
-        SettingsStatus = "New token generated.";
+        SettingsStatus = "新しいトークンを生成しました。";
     }
 
     private void OnOpenSettingsRequested(object? sender, EventArgs e)
@@ -552,6 +590,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         foreach (var command in new[]
         {
             ToggleExpandCommand,
+            SelectActivityCommand,
             PlayPauseCommand,
             PreviousCommand,
             NextCommand,
@@ -563,6 +602,17 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         {
             command.RaiseCanExecuteChanged();
         }
+    }
+
+    private static string? GetActivityIdParameter(object? parameter)
+    {
+        return parameter switch
+        {
+            LiveActivityViewModel viewModel => viewModel.Id,
+            LiveActivity activity => activity.Id,
+            string id when !string.IsNullOrWhiteSpace(id) => id,
+            _ => null
+        };
     }
 
     private void RunOnUiContext(Action action)

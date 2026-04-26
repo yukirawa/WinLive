@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 using WinLive.Core;
@@ -7,6 +8,7 @@ namespace WinLive.Windows;
 public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActivityCommandRouter
 {
     private static readonly TimeSpan TrackChangeEmphasisDuration = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan MediaPropertiesTimeout = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan AlbumArtTimeout = TimeSpan.FromMilliseconds(750);
 
     private readonly ILiveActivityStore _store;
@@ -16,7 +18,10 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly Dictionary<string, GlobalSystemMediaTransportControlsSession> _mediaSessions =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<int, string> _sessionActivityIds = new();
+    private readonly HashSet<int> _attachedSessionKeys = new();
     private readonly Dictionary<string, string> _trackKeys = new(StringComparer.Ordinal);
+    private readonly MediaMetadataCache _metadataCache = new();
 
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
 
@@ -52,7 +57,16 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
             return _sourceAppLauncher.CanLaunch(session.SourceAppUserModelId);
         }
 
-        var controls = session.GetPlaybackInfo().Controls;
+        GlobalSystemMediaTransportControlsSessionPlaybackControls controls;
+        try
+        {
+            controls = session.GetPlaybackInfo().Controls;
+        }
+        catch
+        {
+            return false;
+        }
+
         return action switch
         {
             LiveActivityActionKind.Play => controls.IsPlayEnabled,
@@ -114,7 +128,10 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
             }
 
             _mediaSessions.Clear();
+            _sessionActivityIds.Clear();
+            _attachedSessionKeys.Clear();
             _trackKeys.Clear();
+            _metadataCache.Clear();
         }
         finally
         {
@@ -160,18 +177,34 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
         await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var sessions = _manager.GetSessions();
+            var sessions = _manager.GetSessions().ToList();
+            var identityInputs = sessions
+                .Select(session =>
+                {
+                    var sessionKey = GetSessionInstanceKey(session);
+                    return new MediaSessionIdentityInput(
+                        sessionKey,
+                        MediaActivityIdentity.SourceKey(session.SourceAppUserModelId, sessionKey));
+                })
+                .ToArray();
+            var sessionActivityIds = MediaActivityIdentity.BuildActivityIds(
+                identityInputs,
+                _sessionActivityIds);
             var activeIds = new HashSet<string>(StringComparer.Ordinal);
+
+            _sessionActivityIds.Clear();
 
             foreach (var session in sessions)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var id = GetActivityId(session);
+                var sessionKey = GetSessionInstanceKey(session);
+                var id = sessionActivityIds[sessionKey];
                 activeIds.Add(id);
+                _sessionActivityIds[sessionKey] = id;
 
-                if (!_mediaSessions.ContainsKey(id))
+                _mediaSessions[id] = session;
+                if (_attachedSessionKeys.Add(sessionKey))
                 {
-                    _mediaSessions[id] = session;
                     AttachSessionEvents(session);
                 }
 
@@ -182,6 +215,7 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
             {
                 _mediaSessions.Remove(staleId);
                 _trackKeys.Remove(staleId);
+                _metadataCache.Remove(staleId);
                 _store.Remove(staleId, LiveActivityEndReason.SourceClosed);
             }
         }
@@ -202,10 +236,16 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
     {
         _ = Task.Run(async () =>
         {
-            var id = GetActivityId(session);
+            var sessionKey = GetSessionInstanceKey(session);
             await _refreshGate.WaitAsync().ConfigureAwait(false);
             try
             {
+                if (!_sessionActivityIds.TryGetValue(sessionKey, out var id) ||
+                    !_mediaSessions.ContainsKey(id))
+                {
+                    return;
+                }
+
                 await UpsertSessionAsync(id, session).ConfigureAwait(false);
             }
             finally
@@ -219,37 +259,56 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
         string id,
         GlobalSystemMediaTransportControlsSession session)
     {
-        var playbackInfo = session.GetPlaybackInfo();
+        GlobalSystemMediaTransportControlsSessionPlaybackInfo playbackInfo;
+        try
+        {
+            playbackInfo = session.GetPlaybackInfo();
+        }
+        catch
+        {
+            RemoveSessionActivity(id, LiveActivityEndReason.SourceClosed);
+            return;
+        }
+
         var state = MapPlaybackState(playbackInfo.PlaybackStatus);
 
         if (state == LiveActivityState.Stopped ||
             state == LiveActivityState.Hidden ||
             (state == LiveActivityState.Paused && !_settings.ShowPausedMedia))
         {
-            _store.Remove(id, LiveActivityEndReason.Stopped);
+            RemoveSessionActivity(id, LiveActivityEndReason.Stopped);
             return;
         }
 
-        var mediaProperties = await session.TryGetMediaPropertiesAsync();
-        var timeline = session.GetTimelineProperties();
-        var title = string.IsNullOrWhiteSpace(mediaProperties.Title)
-            ? "Unknown track"
-            : mediaProperties.Title;
-        var artist = string.IsNullOrWhiteSpace(mediaProperties.Artist)
-            ? null
-            : mediaProperties.Artist;
-        var album = string.IsNullOrWhiteSpace(mediaProperties.AlbumTitle)
-            ? null
-            : mediaProperties.AlbumTitle;
+        var mediaProperties = await TryReadMediaPropertiesAsync(session).ConfigureAwait(false);
+        var freshAlbumArtBytes = _settings.ShowAlbumArt && !string.IsNullOrWhiteSpace(mediaProperties?.Title)
+            ? await ReadAlbumArtAsync(mediaProperties.Thumbnail).ConfigureAwait(false)
+            : null;
 
-        var duration = timeline.EndTime > timeline.StartTime
+        if (!_metadataCache.TryResolve(
+            id,
+            mediaProperties?.Title,
+            mediaProperties?.Artist,
+            mediaProperties?.AlbumTitle,
+            freshAlbumArtBytes,
+            HasUsableTransportControls(playbackInfo),
+            out var metadata))
+        {
+            RemoveSessionActivity(id, LiveActivityEndReason.Stopped);
+            return;
+        }
+
+        var timeline = TryGetTimelineProperties(session);
+        var duration = timeline is not null && timeline.EndTime > timeline.StartTime
             ? timeline.EndTime - timeline.StartTime
             : null as TimeSpan?;
-        var position = duration is not null ? timeline.Position - timeline.StartTime : null as TimeSpan?;
+        var position = duration is not null && timeline is not null
+            ? timeline.Position - timeline.StartTime
+            : null as TimeSpan?;
         var progress = position is null || duration is null || duration.Value.TotalSeconds <= 0
             ? null as double?
             : position.Value.TotalSeconds / duration.Value.TotalSeconds;
-        var trackKey = $"{title}\n{artist}\n{album}\n{duration}";
+        var trackKey = $"{metadata.Title}\n{metadata.Artist}\n{metadata.Album}\n{duration}";
         var isTrackChange = _trackKeys.TryGetValue(id, out var previousKey) && previousKey != trackKey;
         _trackKeys[id] = trackKey;
 
@@ -260,8 +319,8 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
         {
             Id = id,
             Type = LiveActivityType.Media,
-            Title = title,
-            Subtitle = artist,
+            Title = metadata.Title,
+            Subtitle = metadata.Artist,
             State = state,
             Progress = progress,
             SourceApp = new LiveActivitySourceApp
@@ -269,7 +328,7 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
                 Name = session.SourceAppUserModelId,
                 AppUserModelId = session.SourceAppUserModelId
             },
-            Actions = BuildActions(session, state),
+            Actions = BuildActions(session, playbackInfo, state),
             Priority = 100,
             CreatedAt = existing?.CreatedAt ?? default,
             UpdatedAt = default,
@@ -279,11 +338,9 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
                 : existing?.EmphasizedUntil,
             Media = new LiveActivityMediaInfo
             {
-                Artist = artist,
-                Album = album,
-                AlbumArtBytes = _settings.ShowAlbumArt
-                    ? await ReadAlbumArtAsync(mediaProperties.Thumbnail).ConfigureAwait(false)
-                    : null,
+                Artist = metadata.Artist,
+                Album = metadata.Album,
+                AlbumArtBytes = _settings.ShowAlbumArt ? metadata.AlbumArtBytes : null,
                 Position = position,
                 Duration = duration
             },
@@ -294,11 +351,19 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
         });
     }
 
+    private void RemoveSessionActivity(string id, LiveActivityEndReason reason)
+    {
+        _trackKeys.Remove(id);
+        _metadataCache.Remove(id);
+        _store.Remove(id, reason);
+    }
+
     private IReadOnlyList<LiveActivityActionDescriptor> BuildActions(
         GlobalSystemMediaTransportControlsSession session,
+        GlobalSystemMediaTransportControlsSessionPlaybackInfo playbackInfo,
         LiveActivityState state)
     {
-        var controls = session.GetPlaybackInfo().Controls;
+        var controls = playbackInfo.Controls;
         var actions = new List<LiveActivityActionDescriptor>();
 
         if (controls.IsPlayEnabled || controls.IsPauseEnabled)
@@ -353,12 +418,47 @@ public sealed class WindowsMediaActivitySource : ILiveActivitySource, ILiveActiv
         };
     }
 
-    private static string GetActivityId(GlobalSystemMediaTransportControlsSession session)
+    private static int GetSessionInstanceKey(GlobalSystemMediaTransportControlsSession session)
     {
-        var source = string.IsNullOrWhiteSpace(session.SourceAppUserModelId)
-            ? session.GetHashCode().ToString("X")
-            : session.SourceAppUserModelId;
-        return $"media:{source}";
+        return RuntimeHelpers.GetHashCode(session);
+    }
+
+    private static async Task<GlobalSystemMediaTransportControlsSessionMediaProperties?> TryReadMediaPropertiesAsync(
+        GlobalSystemMediaTransportControlsSession session)
+    {
+        try
+        {
+            return await session.TryGetMediaPropertiesAsync()
+                .AsTask()
+                .WaitAsync(MediaPropertiesTimeout)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static GlobalSystemMediaTransportControlsSessionTimelineProperties? TryGetTimelineProperties(
+        GlobalSystemMediaTransportControlsSession session)
+    {
+        try
+        {
+            return session.GetTimelineProperties();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool HasUsableTransportControls(GlobalSystemMediaTransportControlsSessionPlaybackInfo playbackInfo)
+    {
+        var controls = playbackInfo.Controls;
+        return controls.IsPlayEnabled ||
+            controls.IsPauseEnabled ||
+            controls.IsNextEnabled ||
+            controls.IsPreviousEnabled;
     }
 
     private static async Task<byte[]?> ReadAlbumArtAsync(IRandomAccessStreamReference? thumbnail)

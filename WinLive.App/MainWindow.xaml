@@ -54,6 +54,24 @@
             <Setter Property="Background" Value="#D9111820" />
         </Style>
 
+        <Style x:Key="TileButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DataTemplate x:Key="ActivityTileTemplate">
             <Grid ColumnDefinitions="38,*,Auto" VerticalAlignment="Center">
                 <Border Width="32"
@@ -126,37 +144,41 @@
                           Visibility="{Binding ShowUpSecondaryTiles, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource SecondaryTileStyle}"
-                                Margin="0,0,0,8"
-                                Opacity="0">
-                            <Border.RenderTransform>
-                                <TranslateTransform Y="-8" />
-                            </Border.RenderTransform>
-                            <Border.Triggers>
-                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             To="1"
-                                                             Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <QuadraticEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                             To="0"
-                                                             Duration="0:0:0.22">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </EventTrigger>
-                            </Border.Triggers>
-                            <ContentPresenter Content="{Binding}"
-                                              ContentTemplate="{StaticResource ActivityTileTemplate}" />
-                        </Border>
+                        <Button Style="{StaticResource TileButtonStyle}"
+                                Command="{Binding DataContext.SelectActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding Id}">
+                            <Border Style="{StaticResource SecondaryTileStyle}"
+                                    Margin="0,0,0,8"
+                                    Opacity="0">
+                                <Border.RenderTransform>
+                                    <TranslateTransform Y="-8" />
+                                </Border.RenderTransform>
+                                <Border.Triggers>
+                                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                 To="1"
+                                                                 Duration="0:0:0.18">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <QuadraticEase EasingMode="EaseOut" />
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                                 To="0"
+                                                                 Duration="0:0:0.22">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <CubicEase EasingMode="EaseOut" />
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Border.Triggers>
+                                <ContentPresenter Content="{Binding}"
+                                                  ContentTemplate="{StaticResource ActivityTileTemplate}" />
+                            </Border>
+                        </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -238,37 +260,41 @@
                           Visibility="{Binding ShowDownSecondaryTiles, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource SecondaryTileStyle}"
-                                Margin="0,8,0,0"
-                                Opacity="0">
-                            <Border.RenderTransform>
-                                <TranslateTransform Y="-8" />
-                            </Border.RenderTransform>
-                            <Border.Triggers>
-                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             To="1"
-                                                             Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <QuadraticEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                             To="0"
-                                                             Duration="0:0:0.22">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </EventTrigger>
-                            </Border.Triggers>
-                            <ContentPresenter Content="{Binding}"
-                                              ContentTemplate="{StaticResource ActivityTileTemplate}" />
-                        </Border>
+                        <Button Style="{StaticResource TileButtonStyle}"
+                                Command="{Binding DataContext.SelectActivityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding Id}">
+                            <Border Style="{StaticResource SecondaryTileStyle}"
+                                    Margin="0,8,0,0"
+                                    Opacity="0">
+                                <Border.RenderTransform>
+                                    <TranslateTransform Y="-8" />
+                                </Border.RenderTransform>
+                                <Border.Triggers>
+                                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                 To="1"
+                                                                 Duration="0:0:0.18">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <QuadraticEase EasingMode="EaseOut" />
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                                 To="0"
+                                                                 Duration="0:0:0.22">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <CubicEase EasingMode="EaseOut" />
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Border.Triggers>
+                                <ContentPresenter Content="{Binding}"
+                                                  ContentTemplate="{StaticResource ActivityTileTemplate}" />
+                            </Border>
+                        </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

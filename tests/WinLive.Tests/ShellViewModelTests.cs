@@ -137,10 +137,129 @@ public sealed class ShellViewModelTests
         viewModel.Dispose();
     }
 
+    [Fact]
+    public void AddingSecondActivityKeepsPrimaryAndAutoExpands()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        store.Upsert(new LiveActivity
+        {
+            Id = "media:first",
+            Title = "First",
+            State = LiveActivityState.Active,
+            Priority = 10
+        });
+        store.Upsert(new LiveActivity
+        {
+            Id = "media:second",
+            Title = "Second",
+            State = LiveActivityState.Active,
+            Priority = 100
+        });
+
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        Assert.True(viewModel.IsExpanded);
+        Assert.True(viewModel.HasSecondaryActivities);
+        Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:second");
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public async Task SelectActivitySwitchesPrimaryAndCommandTarget()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var router = new FakeCommandRouter();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            router,
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        store.Upsert(MediaActivity("media:first", "First", 100));
+        store.Upsert(MediaActivity("media:second", "Second", 10));
+        router.Allow("media:second", LiveActivityActionKind.PlayPause);
+
+        viewModel.SelectActivityCommand.Execute("media:second");
+
+        Assert.Equal("media:second", viewModel.PrimaryActivity?.Id);
+        Assert.True(viewModel.PlayPauseCommand.CanExecute(null));
+
+        viewModel.PlayPauseCommand.Execute(null);
+        await Task.Yield();
+
+        Assert.Contains(
+            router.ExecutedActions,
+            item => item.Id == "media:second" && item.Action == LiveActivityActionKind.PlayPause);
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void RemovedSelectedActivityFallsBackAndClearsWhenEmpty()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        store.Upsert(MediaActivity("media:first", "First", 100));
+        store.Upsert(MediaActivity("media:second", "Second", 10));
+        viewModel.SelectActivityCommand.Execute("media:second");
+
+        store.Remove("media:second");
+
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+
+        store.Remove("media:first");
+
+        Assert.Null(viewModel.PrimaryActivity);
+        Assert.False(viewModel.IsExpanded);
+        viewModel.Dispose();
+    }
+
+    private static LiveActivity MediaActivity(string id, string title, int priority)
+    {
+        return new LiveActivity
+        {
+            Id = id,
+            Title = title,
+            State = LiveActivityState.Active,
+            Priority = priority,
+            Actions =
+            [
+                new LiveActivityActionDescriptor
+                {
+                    Kind = LiveActivityActionKind.PlayPause,
+                    DisplayName = "Play / pause"
+                }
+            ]
+        };
+    }
+
 
     private sealed class FakeCommandRouter : ILiveActivityCommandRouter
     {
         private readonly HashSet<(string Id, LiveActivityActionKind Action)> _allowed = new();
+
+        public List<(string Id, LiveActivityActionKind Action)> ExecutedActions { get; } = new();
 
         public void Allow(string id, LiveActivityActionKind action)
         {
@@ -157,6 +276,7 @@ public sealed class ShellViewModelTests
             LiveActivityActionKind action,
             CancellationToken cancellationToken = default)
         {
+            ExecutedActions.Add((activityId, action));
             return Task.CompletedTask;
         }
     }
