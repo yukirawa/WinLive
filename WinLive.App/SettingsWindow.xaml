@@ -95,6 +95,25 @@
             <CheckBox Content="実験的な進行状況検出"
                       IsChecked="{Binding ExperimentalProgressEnabled}"
                       Margin="0,8,0,12" />
+            <CheckBox Content="テスト activity"
+                      IsChecked="{Binding DemoActivityEnabled}"
+                      Margin="0,8,0,12" />
+            <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
+                <TextBlock Text="種類"
+                           VerticalAlignment="Center"
+                           Foreground="#3F4A56" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal">
+                    <RadioButton Content="Download"
+                                 IsChecked="{Binding IsDemoDownload}"
+                                 Margin="0,0,18,0" />
+                    <RadioButton Content="Encode"
+                                 IsChecked="{Binding IsDemoEncode}"
+                                 Margin="0,0,18,0" />
+                    <RadioButton Content="Timer"
+                                 IsChecked="{Binding IsDemoTimer}" />
+                </StackPanel>
+            </Grid>
             <Grid ColumnDefinitions="120,*" Margin="0,0,0,12">
                 <TextBlock Text="デモ activity"
                            VerticalAlignment="Center"

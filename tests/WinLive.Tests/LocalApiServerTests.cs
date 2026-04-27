@@ -15,10 +15,7 @@ public sealed class LocalApiServerTests
         var settings = SettingsWithApiEnabled();
         await using var server = new WinLiveLocalApiServer(new LiveActivityStore(), settings);
         await server.StartAsync();
-        using var client = new HttpClient
-        {
-            BaseAddress = server.BaseAddress
-        };
+        using var client = Client(server.BaseAddress!);
 
         using var response = await client.GetAsync("/api/v1/health");
 
@@ -127,12 +124,20 @@ public sealed class LocalApiServerTests
 
     private static HttpClient AuthorizedClient(Uri baseAddress, string token)
     {
-        var client = new HttpClient
+        var client = Client(baseAddress);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
+    private static HttpClient Client(Uri baseAddress)
+    {
+        return new HttpClient(new SocketsHttpHandler
+        {
+            UseProxy = false
+        })
         {
             BaseAddress = baseAddress
         };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
     }
 
     private static int GetFreePort()

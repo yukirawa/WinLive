@@ -24,12 +24,10 @@
         Height="{Binding WindowHeight, Mode=OneWay, FallbackValue=56, TargetNullValue=56}"
         MinWidth="320"
         MinHeight="50"
-        MaxWidth="460"
-        MaxHeight="330"
         IsHitTestVisible="{Binding IsIslandVisible, Mode=OneWay, FallbackValue=True}">
     <Window.Resources>
         <Style x:Key="IslandTileStyle" TargetType="Border">
-            <Setter Property="Width" Value="{Binding DataContext.WindowWidth, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="Width" Value="{Binding DataContext.ActivityStackWidth, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="Height" Value="{Binding DataContext.IslandTileHeight, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="Background" Value="#E612171D" />
             <Setter Property="BorderBrush" Value="#36FFFFFF" />
@@ -48,41 +46,17 @@
             </Setter>
         </Style>
 
-        <Style x:Key="PrimaryTileStyle"
+        <Style x:Key="ActivityStackTileStyle"
                TargetType="Border"
                BasedOn="{StaticResource IslandTileStyle}">
             <Style.Triggers>
-                <DataTrigger Binding="{Binding PrimaryActivity.IsEmphasized}" Value="True">
+                <DataTrigger Binding="{Binding IsEmphasized}" Value="True">
                     <Setter Property="Effect">
                         <Setter.Value>
                             <DropShadowEffect BlurRadius="24"
                                               ShadowDepth="5"
                                               Direction="270"
                                               Opacity="0.44"
-                                              Color="#4AAFEA" />
-                        </Setter.Value>
-                    </Setter>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="SecondaryTileStyle"
-               TargetType="Border"
-               BasedOn="{StaticResource IslandTileStyle}">
-            <Setter Property="Background" Value="#D9111820" />
-        </Style>
-
-        <Style x:Key="SecondaryActivityTileStyle"
-               TargetType="Border"
-               BasedOn="{StaticResource SecondaryTileStyle}">
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsEmphasized}" Value="True">
-                    <Setter Property="Effect">
-                        <Setter.Value>
-                            <DropShadowEffect BlurRadius="22"
-                                              ShadowDepth="5"
-                                              Direction="270"
-                                              Opacity="0.4"
                                               Color="#4AAFEA" />
                         </Setter.Value>
                     </Setter>
@@ -189,119 +163,50 @@
                             Content="{Binding DataContext.ExpandGlyph, RelativeSource={RelativeSource AncestorType=Window}}"
                             Command="{Binding DataContext.ToggleExpandCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                             ToolTip="Expand"
-                            Margin="6,0,0,0" />
+                            Margin="6,0,0,0"
+                            Visibility="{Binding DataContext.ShowExpandControl, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </StackPanel>
             </Grid>
         </DataTemplate>
     </Window.Resources>
 
     <Grid x:Name="IslandSurface"
-          Width="{Binding WindowWidth, Mode=OneWay, FallbackValue=374, TargetNullValue=374}"
-          Height="{Binding WindowHeight, Mode=OneWay, FallbackValue=56, TargetNullValue=56}"
-          HorizontalAlignment="Left"
-          VerticalAlignment="Top"
-          Opacity="0"
+          Background="Transparent"
+          Opacity="{Binding IsIslandVisible, Mode=OneWay, Converter={StaticResource BoolToOpacityConverter}}"
           Cursor="SizeAll"
           CacheMode="BitmapCache"
-          RenderTransformOrigin="1,1"
           MouseLeftButtonDown="Island_MouseLeftButtonDown"
           MouseMove="Island_MouseMove"
           MouseLeftButtonUp="Island_MouseLeftButtonUp">
-        <Grid.RenderTransform>
-            <TransformGroup>
-                <ScaleTransform x:Name="IslandScale" ScaleX="0.92" ScaleY="0.92" />
-                <TranslateTransform x:Name="IslandTranslate" Y="16" />
-            </TransformGroup>
-        </Grid.RenderTransform>
-
-        <StackPanel Width="{Binding WindowWidth, Mode=OneWay}">
-            <ItemsControl ItemsSource="{Binding SecondaryActivities}"
-                          Visibility="{Binding ShowUpSecondaryTiles, Converter={StaticResource BoolToVisibilityConverter}}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource SecondaryActivityTileStyle}"
-                                Margin="0,0,0,8"
-                                Tag="{Binding Id}"
-                                Opacity="0">
-                            <Border.RenderTransform>
-                                <TranslateTransform Y="-8" />
-                            </Border.RenderTransform>
-                            <Border.Triggers>
-                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             To="1"
-                                                             Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <QuadraticEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                             To="0"
-                                                             Duration="0:0:0.22">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </EventTrigger>
-                            </Border.Triggers>
-
-                            <ContentPresenter Content="{Binding}"
-                                              ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <Border Style="{StaticResource PrimaryTileStyle}"
-                    Tag="{Binding PrimaryActivity.Id}">
-                <ContentPresenter Content="{Binding PrimaryActivity}"
-                                  ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
-            </Border>
-
-            <ItemsControl ItemsSource="{Binding SecondaryActivities}"
-                          Visibility="{Binding ShowDownSecondaryTiles, Converter={StaticResource BoolToVisibilityConverter}}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource SecondaryActivityTileStyle}"
-                                Margin="0,8,0,0"
-                                Tag="{Binding Id}"
-                                Opacity="0">
-                            <Border.RenderTransform>
-                                <TranslateTransform Y="-8" />
-                            </Border.RenderTransform>
-                            <Border.Triggers>
-                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             To="1"
-                                                             Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <QuadraticEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                             To="0"
-                                                             Duration="0:0:0.22">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut" />
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </EventTrigger>
-                            </Border.Triggers>
-
-                            <ContentPresenter Content="{Binding}"
-                                              ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
+        <ItemsControl Width="{Binding ActivityStackWidth, Mode=OneWay}"
+                      Height="{Binding ActivityStackHeight, Mode=OneWay}"
+                      Margin="{Binding ActivityStackMargin, Mode=OneWay}"
+                      ItemsSource="{Binding DisplayedActivities}"
+                      AlternationCount="10000">
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Margin">
+                        <Setter.Value>
+                            <MultiBinding Converter="{StaticResource TileStackMarginConverter}"
+                                          ConverterParameter="8">
+                                <Binding RelativeSource="{RelativeSource Self}"
+                                         Path="(ItemsControl.AlternationIndex)" />
+                                <Binding RelativeSource="{RelativeSource AncestorType=Window}"
+                                         Path="DataContext.DisplayedActivityCount" />
+                            </MultiBinding>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource ActivityStackTileStyle}"
+                            Tag="{Binding Id}">
+                        <ContentPresenter Content="{Binding}"
+                                          ContentTemplate="{StaticResource ActivityTileContentTemplate}" />
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
     </Grid>
 </Window>

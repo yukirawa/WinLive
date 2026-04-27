@@ -9,7 +9,8 @@ namespace WinLive.App;
 public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 {
     private const double TileGap = 8;
-    private const int MaxSecondaryTiles = 3;
+    private const double StackViewportPadding = 56;
+    private static readonly TimeSpan DemoActivityAutoStopDelay = TimeSpan.FromSeconds(1.5);
     private static readonly LiveActivityType[] DemoActivityTypes =
     [
         LiveActivityType.Download,
@@ -30,17 +31,14 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     private readonly DispatcherTimer _heartbeatTimer;
     private WinLiveSettings _settings;
     private LiveActivityViewModel? _primaryActivity;
-    private string? _selectedActivityId;
     private bool _isExpanded;
     private bool _isFullScreenSuppressed;
     private bool? _lastLoggedSuppression;
     private IslandBounds _windowBounds;
     private string _settingsStatus = string.Empty;
     private readonly DispatcherTimer _demoActivityTimer;
-    private string? _demoActivityId;
-    private LiveActivityType _demoActivityType;
-    private DateTimeOffset _demoActivityStartedAt;
-    private TimeSpan _demoActivityDuration;
+    private readonly Dictionary<LiveActivityType, DemoActivityState> _demoActivities = new();
+    private LiveActivityType _selectedDemoActivityType = LiveActivityType.Download;
     private bool _isDisposed;
 
     public WinLiveShellViewModel(
@@ -66,10 +64,10 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         Activities = new ObservableCollection<LiveActivityViewModel>();
         SecondaryActivities = new ObservableCollection<LiveActivityViewModel>();
+        DisplayedActivities = new ObservableCollection<LiveActivityViewModel>();
         ToggleExpandCommand = new RelayCommand(
             () => IsExpanded = !IsExpanded,
             () => PrimaryActivity is not null && HasSecondaryActivities);
-        SelectActivityCommand = new RelayCommand(SelectActivity, CanSelectActivity);
         PreviousActivityCommand = new AsyncRelayCommand(
             (parameter, token) => ExecuteActivityActionAsync(parameter, LiveActivityActionKind.Previous, token),
             parameter => CanExecuteActivityAction(parameter, LiveActivityActionKind.Previous));
@@ -103,7 +101,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         StartDemoDownloadCommand = new RelayCommand(() => StartDemoActivity(LiveActivityType.Download));
         StartDemoEncodeCommand = new RelayCommand(() => StartDemoActivity(LiveActivityType.Encode));
         StartDemoTimerCommand = new RelayCommand(() => StartDemoActivity(LiveActivityType.Timer));
-        StopDemoActivityCommand = new RelayCommand(StopDemoActivity, () => _demoActivityId is not null);
+        StopDemoActivityCommand = new RelayCommand(StopDemoActivity, () => _demoActivities.Count > 0);
 
         _activityStore.ActivitiesChanged += OnActivitiesChanged;
         _trayCommandService.OpenSettingsRequested += OnOpenSettingsRequested;
@@ -136,6 +134,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<LiveActivityViewModel> SecondaryActivities { get; }
 
+    public ObservableCollection<LiveActivityViewModel> DisplayedActivities { get; }
+
     public LiveActivityViewModel? PrimaryActivity
     {
         get => _primaryActivity;
@@ -148,6 +148,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(HasSecondaryActivities));
                 OnPropertyChanged(nameof(ShowUpSecondaryTiles));
                 OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+                OnPropertyChanged(nameof(DisplayedActivityCount));
                 OnPropertyChanged(nameof(ShowMediaTransportControls));
                 OnPropertyChanged(nameof(ShowPreviousNextControls));
                 OnPropertyChanged(nameof(ShowOpenSourceAppControl));
@@ -172,6 +173,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(ShowDownSecondaryTiles));
                 OnPropertyChanged(nameof(ShowPreviousNextControls));
                 OnPropertyChanged(nameof(ShowExpandControl));
+                RefreshDisplayedActivities();
                 RefreshWindowBounds();
             }
         }
@@ -213,6 +215,14 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         get => _windowBounds.Height;
         private set => SetWindowBounds(_windowBounds with { Height = value });
     }
+
+    public int DisplayedActivityCount => DisplayedActivities.Count;
+
+    public double ActivityStackWidth => CompactWidth;
+
+    public double ActivityStackHeight => CalculateActivityStackHeight(GetVisibleTileCount());
+
+    public Thickness ActivityStackMargin => new(StackViewportPadding);
 
     public double CompactWidth => CurrentMetrics.Width;
 
@@ -263,7 +273,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     public bool ShowDismissControl => PrimaryActivity is not null && !ShowMediaTransportControls;
 
-    public bool ShowExpandControl => PrimaryActivity is not null;
+    public bool ShowExpandControl => PrimaryActivity is not null && HasSecondaryActivities;
 
     public bool IsExpansionUp
     {
@@ -420,6 +430,58 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool DemoActivityEnabled
+    {
+        get => _demoActivities.Count > 0;
+        set
+        {
+            if (value)
+            {
+                StartDemoActivity(_selectedDemoActivityType);
+            }
+            else
+            {
+                StopDemoActivity();
+            }
+        }
+    }
+
+    public bool IsDemoDownload
+    {
+        get => _selectedDemoActivityType == LiveActivityType.Download;
+        set
+        {
+            if (value)
+            {
+                SetSelectedDemoActivityType(LiveActivityType.Download);
+            }
+        }
+    }
+
+    public bool IsDemoEncode
+    {
+        get => _selectedDemoActivityType == LiveActivityType.Encode;
+        set
+        {
+            if (value)
+            {
+                SetSelectedDemoActivityType(LiveActivityType.Encode);
+            }
+        }
+    }
+
+    public bool IsDemoTimer
+    {
+        get => _selectedDemoActivityType == LiveActivityType.Timer;
+        set
+        {
+            if (value)
+            {
+                SetSelectedDemoActivityType(LiveActivityType.Timer);
+            }
+        }
+    }
+
     public string SettingsPath => _settingsStore.SettingsPath;
 
     public string SettingsStatus
@@ -429,8 +491,6 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
     }
 
     public ICommand ToggleExpandCommand { get; }
-
-    public ICommand SelectActivityCommand { get; }
 
     public ICommand PreviousActivityCommand { get; }
 
@@ -498,16 +558,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         if (Activities.Count == 0)
         {
-            _selectedActivityId = null;
             PrimaryActivity = null;
         }
         else
         {
-            var selectedActivity = Activities.FirstOrDefault(activity => activity.Id == _selectedActivityId) ??
-                FindViewModel(_activityStore.PrimaryActivity?.Id) ??
-                Activities[0];
-            _selectedActivityId = selectedActivity.Id;
-            PrimaryActivity = selectedActivity;
+            PrimaryActivity = FindViewModel(_activityStore.PrimaryActivity?.Id) ?? Activities[0];
         }
 
         RefreshSelectionState();
@@ -515,7 +570,6 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             SecondaryActivities,
             Activities
                 .Where(activity => activity.Id != PrimaryActivity?.Id)
-                .Take(MaxSecondaryTiles)
                 .ToArray());
 
         if (PrimaryActivity is null || SecondaryActivities.Count == 0)
@@ -523,9 +577,11 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             IsExpanded = false;
         }
 
+        RefreshDisplayedActivities();
         OnPropertyChanged(nameof(HasSecondaryActivities));
         OnPropertyChanged(nameof(ShowUpSecondaryTiles));
         OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+        OnPropertyChanged(nameof(DisplayedActivityCount));
         OnPropertyChanged(nameof(ShowExpandControl));
         NotifyPrimaryActivityContextChanged();
         WinLiveDiagnostics.Write(
@@ -568,6 +624,31 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             activity.IsSelected = PrimaryActivity is not null &&
                 string.Equals(activity.Id, PrimaryActivity.Id, StringComparison.Ordinal);
         }
+    }
+
+    private void RefreshDisplayedActivities()
+    {
+        LiveActivityViewModel[] desired;
+        if (PrimaryActivity is null)
+        {
+            desired = [];
+        }
+        else if (!IsExpanded || SecondaryActivities.Count == 0)
+        {
+            desired = [PrimaryActivity];
+        }
+        else if (_settings.ExpansionDirection == IslandExpansionDirection.Up)
+        {
+            desired = SecondaryActivities.Concat([PrimaryActivity]).ToArray();
+        }
+        else
+        {
+            desired = new[] { PrimaryActivity }.Concat(SecondaryActivities).ToArray();
+        }
+
+        SynchronizeActivityViewModels(DisplayedActivities, desired);
+        OnPropertyChanged(nameof(DisplayedActivityCount));
+        OnPropertyChanged(nameof(ActivityStackHeight));
     }
 
     private LiveActivityViewModel? FindViewModel(string? id)
@@ -636,6 +717,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasSecondaryActivities));
         OnPropertyChanged(nameof(ShowUpSecondaryTiles));
         OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+        OnPropertyChanged(nameof(DisplayedActivityCount));
         OnPropertyChanged(nameof(ShowMediaTransportControls));
         OnPropertyChanged(nameof(ShowPreviousNextControls));
         OnPropertyChanged(nameof(ShowOpenSourceAppControl));
@@ -645,26 +727,61 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     private void RefreshWindowBounds()
     {
-        var secondaryCount = IsExpanded ? Math.Min(SecondaryActivities.Count, MaxSecondaryTiles) : 0;
-        var width = CompactWidth;
-        var height = CompactHeight + secondaryCount * (CompactHeight + TileGap);
-        var compactAnchor = _settings.HasCustomIslandPosition
-            ? _placementService.CorrectToVisibleArea(
+        var stackHeight = CalculateActivityStackHeight(GetVisibleTileCount());
+        var width = CompactWidth + StackViewportPadding * 2;
+        var height = stackHeight + StackViewportPadding * 2;
+        var compactAnchor = GetCompactTileAnchor();
+        var top = compactAnchor.Top - StackViewportPadding;
+        if (IsExpanded && _settings.ExpansionDirection == IslandExpansionDirection.Up)
+        {
+            top -= stackHeight - CompactHeight;
+        }
+
+        var next = _placementService.CorrectToVisibleArea(
+            new IslandBounds(compactAnchor.Left - StackViewportPadding, top, width, height));
+        SetWindowBounds(next);
+    }
+
+    private IslandBounds GetCompactTileAnchor()
+    {
+        if (_settings.HasCustomIslandPosition)
+        {
+            return _placementService.CorrectToVisibleArea(
                 new IslandBounds(
                     _settings.IslandBounds.Left,
                     _settings.IslandBounds.Top,
                     CompactWidth,
-                    CompactHeight))
-            : _placementService.GetDefaultIslandBounds(new IslandBounds(0, 0, CompactWidth, CompactHeight));
-        var top = compactAnchor.Top;
-        if (IsExpanded && _settings.ExpansionDirection == IslandExpansionDirection.Up)
-        {
-            top -= height - CompactHeight;
+                    CompactHeight));
         }
 
-        var next = _placementService.CorrectToVisibleArea(
-            new IslandBounds(compactAnchor.Left, top, width, height));
-        SetWindowBounds(next);
+        var defaultWindow = _placementService.GetDefaultIslandBounds(
+            new IslandBounds(
+                0,
+                0,
+                CompactWidth + StackViewportPadding * 2,
+                CompactHeight + StackViewportPadding * 2));
+        return new IslandBounds(
+            defaultWindow.Left + StackViewportPadding,
+            defaultWindow.Top + StackViewportPadding,
+            CompactWidth,
+            CompactHeight);
+    }
+
+    private int GetVisibleTileCount()
+    {
+        if (PrimaryActivity is null)
+        {
+            return 1;
+        }
+
+        return IsExpanded
+            ? 1 + SecondaryActivities.Count
+            : 1;
+    }
+
+    private double CalculateActivityStackHeight(int tileCount)
+    {
+        return tileCount * CompactHeight + Math.Max(0, tileCount - 1) * TileGap;
     }
 
     private void SetWindowBounds(IslandBounds next)
@@ -676,11 +793,14 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         _windowBounds = next;
         WinLiveDiagnostics.Write(
-            $"WindowBounds left={next.Left:0.##} top={next.Top:0.##} width={next.Width:0.##} height={next.Height:0.##}");
+            $"Layout WindowBounds left={next.Left:0.##} top={next.Top:0.##} width={next.Width:0.##} height={next.Height:0.##} " +
+            $"stackWidth={ActivityStackWidth:0.##} stackHeight={ActivityStackHeight:0.##} " +
+            $"tiles={DisplayedActivityCount} expanded={IsExpanded} direction={_settings.ExpansionDirection}");
         OnPropertyChanged(nameof(WindowLeft));
         OnPropertyChanged(nameof(WindowTop));
         OnPropertyChanged(nameof(WindowWidth));
         OnPropertyChanged(nameof(WindowHeight));
+        OnPropertyChanged(nameof(ActivityStackHeight));
     }
 
     private void OnHeartbeat(object? sender, EventArgs e)
@@ -766,26 +886,31 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var removedDemoState = TryRemoveDemoActivityState(id);
         _activityStore.Remove(id, LiveActivityEndReason.Deleted);
-    }
-
-    private bool CanSelectActivity(object? parameter)
-    {
-        var id = GetActivityIdParameter(parameter);
-        return id is not null &&
-            Activities.Any(activity => activity.Id == id);
-    }
-
-    private void SelectActivity(object? parameter)
-    {
-        var id = GetActivityIdParameter(parameter);
-        if (id is null || id == _selectedActivityId || !Activities.Any(activity => activity.Id == id))
+        if (removedDemoState)
         {
-            return;
+            if (_demoActivities.Count == 0)
+            {
+                _demoActivityTimer.Stop();
+            }
+
+            NotifyDemoActivityStateChanged();
+            RaiseCommandCanExecuteChanged();
+        }
+    }
+
+    private bool TryRemoveDemoActivityState(string id)
+    {
+        foreach (var state in _demoActivities.Values.ToArray())
+        {
+            if (string.Equals(state.Id, id, StringComparison.Ordinal))
+            {
+                return _demoActivities.Remove(state.Type);
+            }
         }
 
-        _selectedActivityId = id;
-        RefreshFromStore();
+        return false;
     }
 
     private async Task ResetPositionAsync(CancellationToken cancellationToken)
@@ -801,11 +926,13 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         double top,
         CancellationToken cancellationToken = default)
     {
+        var stackHeight = Math.Max(0, _windowBounds.Height - StackViewportPadding * 2);
+        var anchorLeft = left + StackViewportPadding;
         var anchorTop = IsExpanded && _settings.ExpansionDirection == IslandExpansionDirection.Up
-            ? top + Math.Max(0, _windowBounds.Height - CompactHeight)
-            : top;
+            ? top + StackViewportPadding + Math.Max(0, stackHeight - CompactHeight)
+            : top + StackViewportPadding;
         var corrected = _placementService.CorrectToVisibleArea(
-            new IslandBounds(left, anchorTop, CompactWidth, CompactHeight));
+            new IslandBounds(anchorLeft, anchorTop, CompactWidth, CompactHeight));
         _settings.HasCustomIslandPosition = true;
         _settings.IslandBounds = corrected;
         RefreshWindowBounds();
@@ -824,6 +951,7 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsExpansionDown));
         OnPropertyChanged(nameof(ShowUpSecondaryTiles));
         OnPropertyChanged(nameof(ShowDownSecondaryTiles));
+        RefreshDisplayedActivities();
         RefreshWindowBounds();
     }
 
@@ -846,6 +974,9 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsIslandSizeLarge));
         OnPropertyChanged(nameof(CompactWidth));
         OnPropertyChanged(nameof(CompactHeight));
+        OnPropertyChanged(nameof(ActivityStackWidth));
+        OnPropertyChanged(nameof(ActivityStackHeight));
+        OnPropertyChanged(nameof(ActivityStackMargin));
         OnPropertyChanged(nameof(IslandTileHeight));
         OnPropertyChanged(nameof(IslandTileCornerRadius));
         OnPropertyChanged(nameof(IslandTilePadding));
@@ -866,17 +997,20 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
     private void StartDemoActivity(LiveActivityType type)
     {
-        StopDemoActivity();
+        _selectedDemoActivityType = type;
+        var state = new DemoActivityState(
+            type,
+            DemoActivityId(type),
+            DateTimeOffset.UtcNow,
+            type == LiveActivityType.Timer
+                ? TimeSpan.FromSeconds(30)
+                : TimeSpan.FromSeconds(18));
 
-        _demoActivityType = type;
-        _demoActivityId = DemoActivityId(type);
-        _demoActivityStartedAt = DateTimeOffset.UtcNow;
-        _demoActivityDuration = type == LiveActivityType.Timer
-            ? TimeSpan.FromSeconds(30)
-            : TimeSpan.FromSeconds(18);
-
-        UpsertDemoActivity(0);
+        _demoActivities[type] = state;
+        _activityStore.Remove(state.Id, LiveActivityEndReason.Deleted);
+        UpsertDemoActivity(state, 0);
         _demoActivityTimer.Start();
+        NotifyDemoActivityStateChanged();
         RaiseCommandCanExecuteChanged();
         SettingsStatus = "デモ activity を開始しました。島で音楽以外の進行状況を確認できます。";
     }
@@ -889,45 +1023,87 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
             _activityStore.Remove(id, LiveActivityEndReason.Deleted);
         }
 
-        _demoActivityId = null;
+        _demoActivities.Clear();
+        NotifyDemoActivityStateChanged();
         RaiseCommandCanExecuteChanged();
     }
 
     private void OnDemoActivityTick(object? sender, EventArgs e)
     {
-        if (_demoActivityId is null)
+        if (_demoActivities.Count == 0)
         {
+            _demoActivityTimer.Stop();
             return;
         }
 
-        var elapsed = DateTimeOffset.UtcNow - _demoActivityStartedAt;
-        var progress = Math.Clamp(elapsed.TotalSeconds / _demoActivityDuration.TotalSeconds, 0d, 1d);
-        UpsertDemoActivity(progress);
+        var now = DateTimeOffset.UtcNow;
+        foreach (var state in _demoActivities.Values.ToArray())
+        {
+            var elapsed = now - state.StartedAt;
+            var progress = Math.Clamp(elapsed.TotalSeconds / state.Duration.TotalSeconds, 0d, 1d);
+            UpsertDemoActivity(state, progress);
 
-        if (progress >= 1)
+            if (progress >= 1)
+            {
+                state.CompletedAt ??= now;
+                if (now - state.CompletedAt >= DemoActivityAutoStopDelay)
+                {
+                    RemoveDemoActivity(state.Type);
+                }
+            }
+        }
+
+        if (_demoActivities.Count == 0)
         {
             _demoActivityTimer.Stop();
+            NotifyDemoActivityStateChanged();
             RaiseCommandCanExecuteChanged();
         }
     }
 
-    private void UpsertDemoActivity(double progress)
+    private void SetSelectedDemoActivityType(LiveActivityType type)
     {
-        if (_demoActivityId is null)
+        if (_selectedDemoActivityType == type)
         {
             return;
         }
 
+        _selectedDemoActivityType = type;
+        NotifyDemoActivityTypeChanged();
+    }
+
+    private void NotifyDemoActivityStateChanged()
+    {
+        OnPropertyChanged(nameof(DemoActivityEnabled));
+        NotifyDemoActivityTypeChanged();
+    }
+
+    private void NotifyDemoActivityTypeChanged()
+    {
+        OnPropertyChanged(nameof(IsDemoDownload));
+        OnPropertyChanged(nameof(IsDemoEncode));
+        OnPropertyChanged(nameof(IsDemoTimer));
+    }
+
+    private bool RemoveDemoActivity(LiveActivityType type)
+    {
+        var removed = _demoActivities.Remove(type);
+        var storeRemoved = _activityStore.Remove(DemoActivityId(type), LiveActivityEndReason.Deleted);
+        return removed || storeRemoved;
+    }
+
+    private void UpsertDemoActivity(DemoActivityState state, double progress)
+    {
         var isDone = progress >= 1;
         var percent = Math.Round(progress * 100);
-        var (title, subtitle) = _demoActivityType switch
+        var (title, subtitle) = state.Type switch
         {
             LiveActivityType.Encode => (
                 isDone ? "Demo encode complete" : "Demo encode",
                 isDone ? "Ready to review" : $"{percent:0}% rendered"),
             LiveActivityType.Timer => (
                 isDone ? "Demo timer finished" : "Demo timer",
-                isDone ? "Done" : $"{Math.Max(0, (_demoActivityDuration - (DateTimeOffset.UtcNow - _demoActivityStartedAt)).TotalSeconds):0}s left"),
+                isDone ? "Done" : $"{Math.Max(0, (state.Duration - (DateTimeOffset.UtcNow - state.StartedAt)).TotalSeconds):0}s left"),
             _ => (
                 isDone ? "Demo download complete" : "Demo download",
                 isDone ? "Saved locally" : $"{percent:0}% downloaded")
@@ -935,8 +1111,8 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
 
         _activityStore.Upsert(new LiveActivity
         {
-            Id = _demoActivityId,
-            Type = _demoActivityType,
+            Id = state.Id,
+            Type = state.Type,
             State = isDone ? LiveActivityState.Completed : LiveActivityState.Active,
             Title = title,
             Subtitle = subtitle,
@@ -994,7 +1170,6 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         foreach (var command in new[]
         {
             ToggleExpandCommand,
-            SelectActivityCommand,
             PreviousActivityCommand,
             PlayPauseActivityCommand,
             NextActivityCommand,
@@ -1034,6 +1209,23 @@ public sealed class WinLiveShellViewModel : ObservableObject, IDisposable
         }
 
         _synchronizationContext.Post(_ => action(), null);
+    }
+
+    private sealed class DemoActivityState(
+        LiveActivityType type,
+        string id,
+        DateTimeOffset startedAt,
+        TimeSpan duration)
+    {
+        public LiveActivityType Type { get; } = type;
+
+        public string Id { get; } = id;
+
+        public DateTimeOffset StartedAt { get; } = startedAt;
+
+        public TimeSpan Duration { get; } = duration;
+
+        public DateTimeOffset? CompletedAt { get; set; }
     }
 
     private sealed record IslandSizeMetrics(

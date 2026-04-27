@@ -1,9 +1,6 @@
-using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
 
 namespace WinLive.App;
 
@@ -17,54 +14,25 @@ public partial class MainWindow : Window
     private double _dragStartTop;
     private bool _isDragging;
     private bool _dragCaptured;
-    private string? _pressedActivityId;
 
     public MainWindow()
     {
         InitializeComponent();
-        Loaded += (_, _) => ApplyIslandVisibility(animate: false);
         DataContextChanged += OnDataContextChanged;
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (_viewModel is not null)
-        {
-            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        }
-
         _viewModel = e.NewValue as WinLiveShellViewModel;
-        if (_viewModel is not null)
-        {
-            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        }
-
-        ApplyIslandVisibility(animate: false);
-    }
-
-    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(WinLiveShellViewModel.IsIslandVisible))
-        {
-            Dispatcher.Invoke(() => ApplyIslandVisibility(animate: true));
-        }
-
-        if (e.PropertyName == nameof(WinLiveShellViewModel.IsExpanded))
-        {
-            Dispatcher.Invoke(AnimateExpansionPulse);
-        }
     }
 
     private void Island_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _pressedActivityId = null;
-
         if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) is not null)
         {
             return;
         }
 
-        _pressedActivityId = FindTaggedActivityId(e.OriginalSource as DependencyObject);
         _dragStartPoint = e.GetPosition(this);
         _dragStartLeft = Left;
         _dragStartTop = Top;
@@ -99,9 +67,6 @@ public partial class MainWindow : Window
 
     private async void Island_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        var pressedActivityId = _pressedActivityId;
-        _pressedActivityId = null;
-
         if (_dragCaptured)
         {
             IslandSurface.ReleaseMouseCapture();
@@ -125,19 +90,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (DataContext is not WinLiveShellViewModel viewModel)
-        {
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(pressedActivityId) &&
-            viewModel.SelectActivityCommand.CanExecute(pressedActivityId))
-        {
-            viewModel.SelectActivityCommand.Execute(pressedActivityId);
-            e.Handled = true;
-            return;
-        }
-
         e.Handled = true;
     }
 
@@ -157,81 +109,4 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private static string? FindTaggedActivityId(DependencyObject? current)
-    {
-        while (current is not null)
-        {
-            if (current is FrameworkElement { Tag: string id } &&
-                !string.IsNullOrWhiteSpace(id))
-            {
-                return id;
-            }
-
-            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
-        }
-
-        return null;
-    }
-
-    private void ApplyIslandVisibility(bool animate)
-    {
-        var visible = _viewModel?.IsIslandVisible == true;
-        IsHitTestVisible = visible;
-
-        if (!animate)
-        {
-            IslandSurface.Opacity = visible ? 1 : 0;
-            IslandScale.ScaleX = visible ? 1 : 0.92;
-            IslandScale.ScaleY = visible ? 1 : 0.92;
-            IslandTranslate.Y = visible ? 0 : 16;
-            return;
-        }
-
-        var duration = TimeSpan.FromMilliseconds(visible ? 240 : 150);
-        IEasingFunction ease = visible
-            ? new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            : new CubicEase { EasingMode = EasingMode.EaseInOut };
-
-        Animate(IslandSurface, OpacityProperty, visible ? 1 : 0, duration, ease);
-        Animate(IslandScale, System.Windows.Media.ScaleTransform.ScaleXProperty, visible ? 1 : 0.92, duration, ease);
-        Animate(IslandScale, System.Windows.Media.ScaleTransform.ScaleYProperty, visible ? 1 : 0.92, duration, ease);
-        Animate(IslandTranslate, System.Windows.Media.TranslateTransform.YProperty, visible ? 0 : 16, duration, ease);
-    }
-
-    private void AnimateExpansionPulse()
-    {
-        if (_viewModel?.IsIslandVisible != true)
-        {
-            return;
-        }
-
-        var animation = new DoubleAnimation
-        {
-            From = 0.985,
-            To = 1,
-            Duration = TimeSpan.FromMilliseconds(180),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        IslandScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, animation);
-        IslandScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, animation.Clone());
-    }
-
-    private static void Animate(
-        IAnimatable target,
-        DependencyProperty property,
-        double to,
-        TimeSpan duration,
-        IEasingFunction easing)
-    {
-        var animation = new DoubleAnimation
-        {
-            To = to,
-            Duration = duration,
-            EasingFunction = easing,
-            FillBehavior = FillBehavior.HoldEnd
-        };
-
-        target.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
-    }
 }

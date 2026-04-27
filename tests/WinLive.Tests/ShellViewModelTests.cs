@@ -1,3 +1,4 @@
+using System.Windows;
 using WinLive.App;
 using WinLive.Core;
 
@@ -86,8 +87,8 @@ public sealed class ShellViewModelTests
         await viewModel.CommitDraggedPositionAsync(240, 180);
 
         Assert.True(settingsStore.Current.HasCustomIslandPosition);
-        Assert.Equal(240, settingsStore.Current.IslandBounds.Left);
-        Assert.Equal(180, settingsStore.Current.IslandBounds.Top);
+        Assert.Equal(296, settingsStore.Current.IslandBounds.Left);
+        Assert.Equal(236, settingsStore.Current.IslandBounds.Top);
         viewModel.Dispose();
     }
 
@@ -130,10 +131,12 @@ public sealed class ShellViewModelTests
 
         Assert.True(viewModel.ShowUpSecondaryTiles);
         Assert.False(viewModel.ShowDownSecondaryTiles);
-        Assert.Equal(374, viewModel.WindowWidth);
-        Assert.Equal(120, viewModel.WindowHeight);
-        Assert.Equal(240, viewModel.WindowLeft);
-        Assert.Equal(116, viewModel.WindowTop);
+        Assert.Equal(374, viewModel.ActivityStackWidth);
+        Assert.Equal(120, viewModel.ActivityStackHeight);
+        Assert.Equal(486, viewModel.WindowWidth);
+        Assert.Equal(232, viewModel.WindowHeight);
+        Assert.Equal(184, viewModel.WindowLeft);
+        Assert.Equal(60, viewModel.WindowTop);
         viewModel.Dispose();
     }
 
@@ -155,15 +158,19 @@ public sealed class ShellViewModelTests
             settings);
 
         Assert.True(viewModel.IsIslandSizeSmall);
-        Assert.Equal(320, viewModel.WindowWidth);
-        Assert.Equal(50, viewModel.WindowHeight);
+        Assert.Equal(320, viewModel.CompactWidth);
+        Assert.Equal(50, viewModel.ActivityStackHeight);
+        Assert.Equal(432, viewModel.WindowWidth);
+        Assert.Equal(162, viewModel.WindowHeight);
 
         viewModel.IsIslandSizeLarge = true;
 
         Assert.True(viewModel.IsIslandSizeLarge);
         Assert.Equal(IslandSizePreset.Large, settings.IslandSize);
-        Assert.Equal(430, viewModel.WindowWidth);
-        Assert.Equal(66, viewModel.WindowHeight);
+        Assert.Equal(430, viewModel.CompactWidth);
+        Assert.Equal(66, viewModel.ActivityStackHeight);
+        Assert.Equal(542, viewModel.WindowWidth);
+        Assert.Equal(178, viewModel.WindowHeight);
         viewModel.Dispose();
     }
 
@@ -198,6 +205,83 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void DemoActivityButtonsCanRunMultipleTestActivities()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        viewModel.StartDemoDownloadCommand.Execute(null);
+        viewModel.StartDemoEncodeCommand.Execute(null);
+
+        Assert.True(viewModel.DemoActivityEnabled);
+        Assert.Contains(store.VisibleActivities, item => item.Id == "demo:download");
+        Assert.Contains(store.VisibleActivities, item => item.Id == "demo:encode");
+        Assert.Equal(2, store.VisibleActivities.Count(item => item.Id.StartsWith("demo:", StringComparison.Ordinal)));
+
+        viewModel.DemoActivityEnabled = false;
+
+        Assert.False(viewModel.DemoActivityEnabled);
+        Assert.DoesNotContain(store.Activities, item => item.Id.StartsWith("demo:", StringComparison.Ordinal));
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void DemoActivityToggleStartsSelectedTypeWithoutStoppingExistingDemos()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        viewModel.StartDemoDownloadCommand.Execute(null);
+        viewModel.IsDemoTimer = true;
+        viewModel.DemoActivityEnabled = true;
+
+        Assert.Contains(store.VisibleActivities, item => item.Id == "demo:download");
+        Assert.Contains(store.VisibleActivities, item => item.Id == "demo:timer");
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void DismissDemoActivityRemovesDemoTimerState()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        viewModel.StartDemoDownloadCommand.Execute(null);
+
+        Assert.True(viewModel.DismissActivityCommand.CanExecute("demo:download"));
+
+        viewModel.DismissActivityCommand.Execute("demo:download");
+
+        Assert.False(viewModel.DemoActivityEnabled);
+        Assert.DoesNotContain(store.VisibleActivities, item => item.Id == "demo:download");
+        viewModel.Dispose();
+    }
+
+    [Fact]
     public void MediaPrimaryShowsTransportControlsBeforeExpansion()
     {
         using var tray = new FakeTrayCommandService();
@@ -220,13 +304,52 @@ public sealed class ShellViewModelTests
         Assert.False(viewModel.PreviousCommand.CanExecute(null));
         Assert.False(viewModel.NextCommand.CanExecute(null));
         Assert.False(viewModel.OpenSourceAppCommand.CanExecute(null));
-        Assert.True(viewModel.ShowExpandControl);
+        Assert.False(viewModel.ShowExpandControl);
         Assert.False(viewModel.ToggleExpandCommand.CanExecute(null));
+        Assert.Equal(new[] { "media:first" }, viewModel.DisplayedActivities.Select(item => item.Id));
+        Assert.Equal(374, viewModel.ActivityStackWidth);
+        Assert.Equal(56, viewModel.ActivityStackHeight);
+        Assert.Equal(new Thickness(56), viewModel.ActivityStackMargin);
+        Assert.Equal(486, viewModel.WindowWidth);
+        Assert.Equal(168, viewModel.WindowHeight);
         viewModel.Dispose();
     }
 
     [Fact]
-    public void AddingSecondActivityKeepsPrimaryAndWaitsForExpandButton()
+    public void ExpandedMediaAndDemoActivityStackShowsDemoAboveMediaWhenExpandingUp()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var settings = new WinLiveSettings
+        {
+            ExpansionDirection = IslandExpansionDirection.Up
+        };
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(settings),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            settings);
+
+        store.Upsert(MediaActivity("media:first", "First", 100));
+        viewModel.StartDemoEncodeCommand.Execute(null);
+
+        viewModel.ToggleExpandCommand.Execute(null);
+
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        Assert.Equal(new[] { "demo:encode" }, viewModel.SecondaryActivities.Select(item => item.Id));
+        Assert.Equal(new[] { "demo:encode", "media:first" }, viewModel.DisplayedActivities.Select(item => item.Id));
+        Assert.True(viewModel.ShowUpSecondaryTiles);
+        Assert.False(viewModel.ShowDownSecondaryTiles);
+        Assert.Equal(120, viewModel.ActivityStackHeight);
+        Assert.Equal(232, viewModel.WindowHeight);
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void AddingSecondActivityUsesStorePrimaryAndWaitsForExpandButton()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -254,8 +377,9 @@ public sealed class ShellViewModelTests
             Priority = 100
         });
 
-        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
+        Assert.Equal("media:second", viewModel.PrimaryActivity?.Id);
         Assert.False(viewModel.IsExpanded);
+        Assert.Equal(new[] { "media:second" }, viewModel.DisplayedActivities.Select(item => item.Id));
         Assert.True(viewModel.PrimaryActivity?.IsSelected);
         Assert.True(viewModel.HasSecondaryActivities);
         Assert.True(viewModel.ShowExpandControl);
@@ -266,13 +390,80 @@ public sealed class ShellViewModelTests
         viewModel.ToggleExpandCommand.Execute(null);
 
         Assert.True(viewModel.IsExpanded);
-        Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:second");
+        Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:first");
+        Assert.Equal(new[] { "media:first", "media:second" }, viewModel.DisplayedActivities.Select(item => item.Id));
+        Assert.True(viewModel.ShowExpandControl);
         Assert.DoesNotContain(viewModel.SecondaryActivities, item => item.IsSelected);
         viewModel.Dispose();
     }
 
     [Fact]
-    public async Task SelectActivitySwitchesPrimaryKeepsExpansionAndCommandTarget()
+    public void ExpandedListIncludesAllVisibleSecondaryActivities()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(new WinLiveSettings()),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            new WinLiveSettings());
+
+        store.Upsert(ProgressActivity("primary", "Primary", 100, 0.1));
+        store.Upsert(ProgressActivity("secondary-a", "Secondary A", 40, 0.1));
+        store.Upsert(ProgressActivity("secondary-b", "Secondary B", 30, 0.1));
+        store.Upsert(ProgressActivity("secondary-c", "Secondary C", 20, 0.1));
+        store.Upsert(ProgressActivity("secondary-d", "Secondary D", 10, 0.1));
+
+        viewModel.ToggleExpandCommand.Execute(null);
+
+        Assert.Equal(
+            new[] { "secondary-a", "secondary-b", "secondary-c", "secondary-d" },
+            viewModel.SecondaryActivities.Select(item => item.Id));
+        Assert.Equal(
+            new[] { "secondary-a", "secondary-b", "secondary-c", "secondary-d", "primary" },
+            viewModel.DisplayedActivities.Select(item => item.Id));
+        Assert.True(viewModel.IsExpanded);
+        Assert.Equal(424, viewModel.WindowHeight);
+        Assert.Equal(312, viewModel.ActivityStackHeight);
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void DownExpansionDisplaysPrimaryBeforeSecondaryActivities()
+    {
+        using var tray = new FakeTrayCommandService();
+        var store = new LiveActivityStore();
+        var settings = new WinLiveSettings
+        {
+            ExpansionDirection = IslandExpansionDirection.Down
+        };
+        var viewModel = new WinLiveShellViewModel(
+            store,
+            new NoOpLiveActivityCommandRouter(),
+            new InMemorySettingsStore(settings),
+            new FakePlacementService(),
+            new FakeFullScreenDetector(false),
+            tray,
+            settings);
+
+        store.Upsert(ProgressActivity("primary", "Primary", 100, 0.1));
+        store.Upsert(ProgressActivity("secondary", "Secondary", 10, 0.1));
+
+        viewModel.ToggleExpandCommand.Execute(null);
+
+        Assert.Equal(new[] { "primary", "secondary" }, viewModel.DisplayedActivities.Select(item => item.Id));
+        Assert.False(viewModel.ShowUpSecondaryTiles);
+        Assert.True(viewModel.ShowDownSecondaryTiles);
+        Assert.Equal(120, viewModel.ActivityStackHeight);
+        Assert.Equal(232, viewModel.WindowHeight);
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public async Task ExpandedActivityCommandsTargetTileWithoutSwitchingPrimary()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -291,17 +482,18 @@ public sealed class ShellViewModelTests
         router.Allow("media:second", LiveActivityActionKind.PlayPause);
 
         viewModel.ToggleExpandCommand.Execute(null);
-        viewModel.SelectActivityCommand.Execute("media:second");
 
-        Assert.Equal("media:second", viewModel.PrimaryActivity?.Id);
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
         Assert.True(viewModel.IsExpanded);
         Assert.True(viewModel.PrimaryActivity?.IsSelected);
-        Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:first" && !item.IsSelected);
-        Assert.True(viewModel.PlayPauseCommand.CanExecute(null));
+        Assert.Contains(viewModel.SecondaryActivities, item => item.Id == "media:second" && !item.IsSelected);
+        Assert.Equal(new[] { "media:second", "media:first" }, viewModel.DisplayedActivities.Select(item => item.Id));
+        Assert.True(viewModel.PlayPauseActivityCommand.CanExecute("media:second"));
 
-        viewModel.PlayPauseCommand.Execute(null);
+        viewModel.PlayPauseActivityCommand.Execute("media:second");
         await Task.Yield();
 
+        Assert.Equal("media:first", viewModel.PrimaryActivity?.Id);
         Assert.Contains(
             router.ExecutedActions,
             item => item.Id == "media:second" && item.Action == LiveActivityActionKind.PlayPause);
@@ -385,7 +577,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public void RemovedSelectedActivityFallsBackAndCollapsesOnlyWhenSingleActivityRemains()
+    public void RemovedSecondaryActivityKeepsPrimaryAndCollapsesOnlyWhenSingleActivityRemains()
     {
         using var tray = new FakeTrayCommandService();
         var store = new LiveActivityStore();
@@ -402,7 +594,6 @@ public sealed class ShellViewModelTests
         store.Upsert(MediaActivity("media:second", "Second", 10));
         store.Upsert(MediaActivity("media:third", "Third", 5));
         viewModel.ToggleExpandCommand.Execute(null);
-        viewModel.SelectActivityCommand.Execute("media:second");
 
         store.Remove("media:second");
 
@@ -441,7 +632,7 @@ public sealed class ShellViewModelTests
             Type = LiveActivityType.Download,
             Title = "First",
             State = LiveActivityState.Active,
-            Priority = 10,
+            Priority = 100,
             Progress = 0.1
         });
         store.Upsert(new LiveActivity
@@ -450,7 +641,7 @@ public sealed class ShellViewModelTests
             Type = LiveActivityType.Download,
             Title = "Second",
             State = LiveActivityState.Active,
-            Priority = 100,
+            Priority = 10,
             Progress = 0.1
         });
         var primaryBefore = viewModel.PrimaryActivity;
@@ -462,7 +653,7 @@ public sealed class ShellViewModelTests
             Type = LiveActivityType.Download,
             Title = "Second updated",
             State = LiveActivityState.Active,
-            Priority = 100,
+            Priority = 10,
             Progress = 0.8,
             IsEmphasized = true,
             EmphasizedUntil = DateTimeOffset.UtcNow.AddSeconds(2)
